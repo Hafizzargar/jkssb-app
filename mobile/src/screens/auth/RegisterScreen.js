@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Dimensions, ScrollView, Animated, StatusBar, ActivityIndicator } from 'react-native';
 import { Mail, User, Phone, AtSign, ArrowRight, CheckSquare, Square, Lock, Eye, EyeOff } from 'lucide-react-native';
+import { useDispatch } from 'react-redux';
+import { loginSuccess } from '../../redux/authSlice';
 import { useTheme } from '../../utils/useTheme';
 import { spacing, borderRadius } from '../../theme';
 import client from '../../api/client';
@@ -10,6 +12,7 @@ const { width, height } = Dimensions.get('window');
 const isLargeScreen = width > 768;
 
 const RegisterScreen = ({ navigation }) => {
+  const dispatch = useDispatch();
   const theme = useTheme();
   const [form, setForm] = useState({
     name: '',
@@ -63,9 +66,17 @@ const RegisterScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      await client.post('/auth/register', form);
-      toast('Registration successful! Please wait for admin approval.', 'success');
-      navigation.navigate('Login');
+      const res = await client.post('/auth/register', form);
+      // Dispatch login success to update global state
+      dispatch(loginSuccess({ user: res.data.user }));
+      
+      toast('Welcome! Registration successful.', 'success');
+      
+      // Navigate to Home with a "isNewUser" flag to trigger the invite
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Main', params: { isNewUser: true } }],
+      });
     } catch (error) {
       // Interceptor handles error toast
     } finally {

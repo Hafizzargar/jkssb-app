@@ -136,7 +136,8 @@ exports.getPendingMCQs = async (req, res) => {
  */
 exports.getActiveMCQs = async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    // Get today's date in YYYY-MM-DD format based on server local time
+    const today = new Date().toLocaleDateString('en-CA'); 
     const active = await DailyMCQ.find({ 
       date: today 
     }).sort({ startTime: 1 });
@@ -154,9 +155,9 @@ exports.getActiveMCQs = async (req, res) => {
  */
 exports.createManualMCQ = async (req, res) => {
   try {
-    const { id, subject, questions, testDuration, timePerQuestion, startTime, endTime } = req.body;
-    // Use the date from the startTime provided, or fallback to today
-    const selectedDate = startTime ? new Date(startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    const { id, subject, questions, testDuration, timePerQuestion, startTime, endTime, date } = req.body;
+    // Use explicit date if provided, otherwise infer from startTime, or fallback to today
+    const selectedDate = date || (startTime ? new Date(startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
 
     // Normalize questions to match schema
     const normalizedQuestions = questions.map(q => ({
@@ -172,9 +173,8 @@ exports.createManualMCQ = async (req, res) => {
     let mcqSet = null;
     if (id) {
       mcqSet = await DailyMCQ.findById(id);
-    } else {
-      mcqSet = await DailyMCQ.findOne({ date: selectedDate });
     }
+    // Removed date-based lookup to allow multiple missions per day
 
     if (!req.admin || !req.admin._id) {
       console.error('❌ Admin session missing during MCQ save');

@@ -41,7 +41,23 @@ exports.register = async (req, res) => {
 
     await user.save();
 
-    res.json({ message: 'Registration successful! Please wait for admin approval.' });
+    // AUTO-LOGIN: Setup session immediately after registration
+    req.session.userId = user._id;
+    req.session.isAuth = true;
+    req.session.email = user.email;
+
+    res.json({ 
+      message: 'Registration successful! Welcome aboard.',
+      user: {
+        id: user._id,
+        email: user.email,
+        username: user.username,
+        name: user.name,
+        isRegistered: user.isRegistered,
+        status: user.status,
+        subjectPerformance: []
+      }
+    });
   } catch (error) {
     console.error('Registration Error:', error);
     res.status(500).json({ message: error.message });
@@ -64,6 +80,13 @@ exports.login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    // Check if user is DISABLED
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ 
+        message: 'Your account is disabled. Please contact the team for assistance.' 
+      });
     }
 
     // SETUP SESSION
@@ -110,8 +133,32 @@ exports.checkAuth = async (req, res) => {
  */
 exports.getPendingUsers = async (req, res) => {
   try {
-    const users = await User.find({ status: 'PENDING', isRegistered: true });
+    // Hide the Super Admin from the list
+    const users = await User.find({ 
+      isRegistered: true,
+      email: { $ne: 'hafezzargar987@gmail.com' } 
+    }).sort({ createdAt: -1 });
     res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * Admin: Disable User (Soft Lock)
+ */
+exports.disableUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Safety Check: Never allow disabling the Super Admin
+    const user = await User.findById(userId);
+    if (user && user.email === 'hafezzargar987@gmail.com') {
+      return res.status(403).json({ message: 'Super Admin account is protected and cannot be disabled.' });
+    }
+
+    await User.findByIdAndUpdate(userId, { status: 'DISABLED' });
+    res.json({ message: 'User account has been disabled' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

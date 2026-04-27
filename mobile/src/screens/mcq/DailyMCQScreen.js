@@ -21,10 +21,33 @@ const DailyMCQScreen = ({ navigation }) => {
   const [isTooEarly, setIsTooEarly] = useState(false);
   const [isTooLate, setIsTooLate] = useState(false);
   const [allAnswers, setAllAnswers] = useState([]);
+  const [results, setResults] = useState(null);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const qTimerRef = useRef(null);
   const testTimerRef = useRef(null);
   const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    if (isFinished) {
+      fetchResults();
+    }
+  }, [isFinished]);
+
+  const fetchResults = async () => {
+    setResultsLoading(true);
+    try {
+      const res = await api.get('/api/mcq/results');
+      setResults(res.data);
+    } catch (error) {
+      console.log('Error fetching results:', error);
+    } finally {
+      setResultsLoading(false);
+    }
+  };
 
   useEffect(() => {
     checkTimingAndFetch();
@@ -89,8 +112,21 @@ const DailyMCQScreen = ({ navigation }) => {
     try {
       const res = await api.get('/api/mcq/daily');
       const data = res.data;
-      if (data.isTooEarly) return setIsTooEarly(true);
+      setHistory(data.history || []);
+      
+      if (data.isTooEarly) {
+        setTestId(data._id);
+        setMcqs([ { question: data.subject, startTime: data.startTime } ]);
+        return setIsTooEarly(true);
+      }
       if (data.isTooLate) return setIsTooLate(true);
+      
+      // If already attempted, skip straight to results!
+      if (data.isAttempted) {
+        setIsFinished(true);
+        setLoading(false);
+        return;
+      }
       
       if (!data.questions || data.questions.length === 0) {
         Alert.alert('Not Ready', 'Questions are being prepared.');
@@ -117,7 +153,9 @@ const DailyMCQScreen = ({ navigation }) => {
   };
 
   const handleNext = () => {
-    const currentAnswer = selectedAnswer || 'NONE';
+    if (!selectedAnswer) return;
+
+    const currentAnswer = selectedAnswer;
     const updatedAnswers = [...allAnswers, { 
       q: mcqs[currentIndex].question, 
       ans: currentAnswer,
@@ -134,12 +172,22 @@ const DailyMCQScreen = ({ navigation }) => {
   };
 
   const handleFinishTest = async (finalAnswers) => {
-    setIsFinished(true);
+    setIsSubmitting(true);
     stopAllTimers();
     try {
       await api.post('/api/mcq/submit', { answers: finalAnswers });
+      setIsFinished(true);
     } catch (error) {
       console.log('Submission failed:', error);
+      const msg = error.response?.data?.message || 'We could not save your results. Please try again.';
+      if (error.response?.status === 400 && error.response?.data?.alreadySubmitted) {
+        Alert.alert('Mission Already Completed', 'You have already submitted this mission.');
+        setIsFinished(true);
+      } else {
+        Alert.alert('Submission Error', msg);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -151,19 +199,51 @@ const DailyMCQScreen = ({ navigation }) => {
 
   const s = styles(theme);
 
-  if (loading) return (
+  if (loading || isSubmitting) return (
     <SafeAreaView style={s.container}>
-      <ActivityIndicator size="large" color={theme.colors.primary} style={{ flex: 1 }} />
+      <View style={s.centered}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={[s.emptySub, { marginTop: 20 }]}>
+          {isSubmitting ? 'Securing your results...' : 'Preparing mission...'}
+        </Text>
+      </View>
     </SafeAreaView>
   );
 
   if (isTooEarly) return (
     <SafeAreaView style={s.container}>
-      <View style={s.emptyState}>
-        <Clock color={theme.colors.primary} size={48} />
-        <Text style={s.emptyTitle}>Access Denied</Text>
-        <Text style={s.emptySub}>The daily mission is not yet open.</Text>
-      </View>
+      <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
+        <View style={s.upcomingHero}>
+          <Clock color={theme.colors.primary} size={32} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.upcomingLabel}>UPCOMING MISSION</Text>
+            <Text style={s.upcomingSubject}>{mcqs[0]?.question || 'Daily Challenge'}</Text>
+            <Text style={s.upcomingTime}>Starts at {mcqs[0]?.startTime ? new Date(mcqs[0].startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}</Text>
+          </View>
+        </View>
+
+        <Text style={s.historyTitle}>Personal Records</Text>
+        
+        {history.length === 0 ? (
+          <View style={s.emptyHistory}>
+            <HelpCircle color={theme.colors.textMuted} size={40} />
+            <Text style={s.emptyHistoryText}>Complete your first mission to see your records here!</Text>
+          </View>
+        ) : (
+          history.map((item, idx) => (
+            <View key={idx} style={s.historyCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.historySubject}>{item.subjectCode}</Text>
+                <Text style={s.historyDate}>{new Date(item.attemptedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+              </View>
+              <View style={s.historyScoreBox}>
+                <Text style={s.historyScoreLabel}>SCORE</Text>
+                <Text style={s.historyScoreValue}>{item.score}</Text>
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 
@@ -179,14 +259,72 @@ const DailyMCQScreen = ({ navigation }) => {
 
   if (isFinished) return (
     <SafeAreaView style={s.container}>
-      <View style={s.emptyState}>
-        <CheckCircle2 color={theme.colors.success} size={64} />
-        <Text style={s.emptyTitle}>Mission Complete!</Text>
-        <Text style={s.emptySub}>Results will unlock in 5 minutes.</Text>
-        <TouchableOpacity style={s.homeBtn} onPress={() => navigation.goBack()}>
-          <Text style={s.homeBtnText}>Back to Dashboard</Text>
-        </TouchableOpacity>
-      </View>
+      {resultsLoading || !results?.dailyMCQ ? (
+        <View style={s.centered}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[s.emptySub, { marginTop: 20 }]}>Analyzing performance...</Text>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={s.resultScroll}>
+          <View style={s.resultHeader}>
+            <CheckCircle2 color={theme.colors.success} size={64} />
+            <Text style={s.resultTitle}>Mission Complete!</Text>
+            
+            <View style={s.scoreCard}>
+              <Text style={s.scoreLabel}>Your Final Score</Text>
+              <Text style={s.scoreValue}>{results?.score || 0}</Text>
+            </View>
+          </View>
+
+          <View style={s.reviewSection}>
+            <Text style={s.reviewTitle}>Question Review</Text>
+            {results?.answers?.map((ans, i) => {
+              const mcq = results?.dailyMCQ?.questions?.find(q => q._id === ans.questionId);
+              if (!mcq) return null;
+              return (
+                <View key={i} style={s.reviewCard}>
+                  <View style={s.reviewHeader}>
+                    <Text style={s.reviewQNum}>Q{i + 1}</Text>
+                    {ans.isCorrect ? (
+                      <View style={[s.statusMini, s.bgSuccess]}>
+                        <CheckCircle2 size={12} color="#fff" />
+                        <Text style={s.statusTextMini}>CORRECT</Text>
+                      </View>
+                    ) : (
+                      <View style={[s.statusMini, s.bgError]}>
+                        <AlertTriangle size={12} color="#fff" />
+                        <Text style={s.statusTextMini}>WRONG</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={s.reviewQuestion}>{mcq?.question || 'Question text unavailable'}</Text>
+                  
+                  <View style={s.reviewOptions}>
+                    <View style={s.reviewOptionRow}>
+                      <Text style={s.reviewLabel}>Your Answer:</Text>
+                      <Text style={[s.reviewValue, !ans.isCorrect && s.textError]}>
+                        {mcq?.options[ans.selectedOption.charCodeAt(0) - 65] || ans.selectedOption}
+                      </Text>
+                    </View>
+                    {!ans.isCorrect && mcq && (
+                      <View style={s.reviewOptionRow}>
+                        <Text style={s.reviewLabel}>Correct Answer:</Text>
+                        <Text style={[s.reviewValue, s.textSuccess]}>
+                          {mcq.options[mcq.correct.charCodeAt(0) - 65]}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity style={s.homeBtnFull} onPress={() => navigation.goBack()}>
+            <Text style={s.homeBtnTextFull}>Back to Dashboard</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 
@@ -232,9 +370,21 @@ const DailyMCQScreen = ({ navigation }) => {
       </ScrollView>
 
       <View style={s.footer}>
-        <TouchableOpacity style={s.nextBtn} onPress={handleNext}>
-          <Text style={s.nextBtnText}>{currentIndex === mcqs.length - 1 ? 'Finish Mission' : 'Next Question'}</Text>
-          <ChevronRight color="#000" size={20} />
+        {!selectedAnswer && (
+          <View style={s.hintBox}>
+            <HelpCircle color={theme.colors.textMuted} size={14} />
+            <Text style={s.hintText}>Select an option to continue</Text>
+          </View>
+        )}
+        <TouchableOpacity 
+          style={[s.nextBtn, !selectedAnswer && s.btnDisabled]} 
+          onPress={handleNext}
+          disabled={!selectedAnswer}
+        >
+          <Text style={[s.nextBtnText, !selectedAnswer && s.textMuted]}>
+            {currentIndex === mcqs.length - 1 ? 'Finish Mission' : 'Next Question'}
+          </Text>
+          <ChevronRight color={selectedAnswer ? "#000" : theme.colors.textMuted} size={20} />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -252,6 +402,7 @@ const styles = (theme) => StyleSheet.create({
   timerWarning: { backgroundColor: theme.colors.error, borderColor: theme.colors.error },
   timerText: { color: theme.colors.primary, fontSize: 18, fontWeight: 'bold' },
   white: { color: '#fff' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
   cardWrapper: { flex: 1, paddingHorizontal: spacing.lg },
   card: { backgroundColor: theme.colors.surface, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: theme.colors.border },
   question: { color: theme.colors.text, fontSize: 22, fontWeight: 'bold', marginBottom: 28, lineHeight: 30 },
@@ -267,11 +418,70 @@ const styles = (theme) => StyleSheet.create({
   footer: { padding: spacing.lg },
   nextBtn: { backgroundColor: theme.colors.primary, height: 56, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   nextBtnText: { color: '#000', fontSize: 18, fontWeight: 'bold' },
+  btnDisabled: { backgroundColor: theme.colors.border, opacity: 0.6 },
+  hintBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 12 },
+  hintText: { color: theme.colors.textMuted, fontSize: 12, fontWeight: '600' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30 },
+  resultScroll: { padding: spacing.lg, paddingBottom: 40 },
+  resultHeader: { alignItems: 'center', marginBottom: 32 },
+  resultTitle: { color: theme.colors.text, fontSize: 28, fontWeight: 'bold', marginTop: 16, marginBottom: 24 },
+  scoreCard: { backgroundColor: theme.colors.surface, borderRadius: 24, padding: 32, alignItems: 'center', width: '100%', borderWidth: 1, borderColor: theme.colors.border },
+  scoreLabel: { color: theme.colors.textMuted, fontSize: 14, fontWeight: 'bold', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  scoreValue: { color: theme.colors.primary, fontSize: 64, fontWeight: '900' },
+  reviewSection: { marginTop: 16 },
+  reviewTitle: { color: theme.colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 20 },
+  reviewCard: { backgroundColor: theme.colors.surface, borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: theme.colors.border },
+  reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  reviewQNum: { color: theme.colors.textMuted, fontWeight: 'bold', fontSize: 14 },
+  statusMini: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  bgSuccess: { backgroundColor: '#10b981' },
+  bgError: { backgroundColor: '#ef4444' },
+  statusTextMini: { color: '#fff', fontSize: 10, fontWeight: '900' },
+  reviewQuestion: { color: theme.colors.text, fontSize: 16, fontWeight: '600', lineHeight: 24, marginBottom: 16 },
+  reviewOptions: { gap: 10, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
+  reviewOptionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reviewLabel: { color: theme.colors.textMuted, fontSize: 12 },
+  reviewValue: { color: theme.colors.text, fontSize: 14, fontWeight: 'bold' },
+  textSuccess: { color: '#10b981' },
+  textError: { color: '#ef4444' },
+  homeBtnFull: { backgroundColor: 'rgba(255,255,255,0.05)', height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 24, borderWidth: 1, borderColor: theme.colors.border },
+  homeBtnTextFull: { color: theme.colors.text, fontSize: 16, fontWeight: 'bold' },
   emptyTitle: { color: theme.colors.text, fontSize: 28, fontWeight: 'bold', marginTop: 24, marginBottom: 12 },
   emptySub: { color: theme.colors.textMuted, textAlign: 'center', fontSize: 16, lineHeight: 26 },
   homeBtn: { marginTop: 40, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border },
-  homeBtnText: { color: theme.colors.text, fontWeight: 'bold' }
+  homeBtnText: { color: theme.colors.text, fontWeight: 'bold' },
+  upcomingHero: { 
+    backgroundColor: `${theme.colors.primary}15`, 
+    borderRadius: 24, 
+    padding: 24, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    marginBottom: 32
+  },
+  upcomingLabel: { color: theme.colors.primary, fontSize: 10, fontWeight: '900', letterSpacing: 2, marginBottom: 4 },
+  upcomingSubject: { color: theme.colors.text, fontSize: 24, fontWeight: 'bold' },
+  upcomingTime: { color: theme.colors.textMuted, fontSize: 13, marginTop: 4 },
+  historyTitle: { color: theme.colors.text, fontSize: 18, fontWeight: 'bold', marginBottom: 16, marginLeft: 4 },
+  historyCard: { 
+    backgroundColor: theme.colors.surface, 
+    borderRadius: 20, 
+    padding: 16, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border
+  },
+  historySubject: { color: theme.colors.text, fontSize: 16, fontWeight: 'bold' },
+  historyDate: { color: theme.colors.textMuted, fontSize: 12, marginTop: 2 },
+  historyScoreBox: { alignItems: 'center', paddingLeft: 16, borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.05)' },
+  historyScoreLabel: { color: theme.colors.textMuted, fontSize: 8, fontWeight: '900', marginBottom: 2 },
+  historyScoreValue: { color: theme.colors.primary, fontSize: 20, fontWeight: '900' },
+  emptyHistory: { alignItems: 'center', marginTop: 40, opacity: 0.5 },
+  emptyHistoryText: { color: theme.colors.textMuted, fontSize: 14, textAlign: 'center', marginTop: 12 }
 });
 
 export default DailyMCQScreen;

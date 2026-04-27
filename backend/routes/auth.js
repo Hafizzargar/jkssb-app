@@ -11,5 +11,6 @@ router.post('/logout', authController.logout);
 // Admin Routes
 router.get('/pending-users', adminOnly, authController.getPendingUsers);
 router.post('/approve-user', adminOnly, authController.approveUser);
+router.delete('/disable-user/:userId', adminOnly, authController.disableUser);
 
 module.exports = router;

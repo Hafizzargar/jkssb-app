@@ -129,6 +129,11 @@ exports.triggerGeneration = async (req, res) => {
   try {
     const blogs = await generateBlogs();
     
+    if (!blogs || blogs.length === 0) {
+      console.log('❌ ERROR: Gemini returned 0 blogs. Aborting save.');
+      return res.status(500).json({ message: 'AI failed to generate blogs. Please try again.' });
+    }
+
     // Set expiry to 11:59 AM IST
     const now = new Date();
     const expiry = new Date();

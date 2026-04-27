@@ -1,10 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Dimensions } from 'react-native';
-import { Trophy, BookOpen, Clock, ChevronRight, Flame, Award, Moon, Sun, Play, Users } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Dimensions, Modal, ActivityIndicator, Alert } from 'react-native';
+import { Trophy, BookOpen, Clock, ChevronRight, Flame, Award, Moon, Sun, Play, Users, Shield, Calendar, X, Sparkles, ArrowRight } from 'lucide-react-native';
 import { useDispatch, useSelector } from 'react-redux';
+import { useRoute } from '@react-navigation/native';
 import { setTheme } from '../../redux/settingsSlice';
 import { useTheme } from '../../utils/useTheme';
+import api from '../../utils/api';
 import { spacing, borderRadius } from '../../theme';
+import { toast } from '../../components/Toast';
 
 const { width } = Dimensions.get('window');
 const isLargeScreen = width > 768;
@@ -12,9 +15,12 @@ const isLargeScreen = width > 768;
 const HomeScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const theme = useTheme();
+  const route = useRoute();
   const { theme: currentTheme } = useSelector((state) => state.settings);
   const { user } = useSelector((state) => state.auth);
   const isMasterAdmin = user?.email === 'hafezzargar987@gmail.com';
+  
+  const [showWelcome, setShowWelcome] = React.useState(!!route.params?.isNewUser);
 
   const toggleTheme = () => {
     const modes = ['dark', 'light', 'read'];
@@ -25,18 +31,64 @@ const HomeScreen = ({ navigation }) => {
   const [dailyMission, setDailyMission] = React.useState(null);
   const [timeLeft, setTimeLeft] = React.useState('');
 
+  // 1. Fetch on Mount & Focus (only if not already finished)
   React.useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchDailyMission();
+    });
     fetchDailyMission();
-    // Check every 5 seconds for more precision
-    const timer = setInterval(updateStatus, 5000); 
+    return unsubscribe;
+  }, [navigation, dailyMission?.isAttempted]);
+
+  const [isAutoStarting, setIsAutoStarting] = React.useState(false);
+
+  // 2. Countdown Timer (Local only, no API calls)
+  React.useEffect(() => {
+    if (!dailyMission || dailyMission.isAttempted) return;
+
+    const timer = setInterval(() => {
+      const status = getMissionStatus();
+      if (status === 'UPCOMING') {
+        const start = new Date(dailyMission.startTime);
+        const diff = start - new Date();
+        
+        if (diff <= 0) {
+          // Mission started! Auto-launch
+          clearInterval(timer);
+          setIsAutoStarting(false);
+          handleStartMission();
+          return;
+        }
+
+        const mins = Math.floor(diff / 60000);
+        const secs = Math.floor((diff % 60000) / 1000);
+        
+        // Auto-start visual sequence at 10 seconds
+        if (mins === 0 && secs <= 10) {
+          setIsAutoStarting(true);
+        }
+
+        setTimeLeft(`Starts in ${mins}m ${secs}s`);
+      } else if (status === 'LIVE') {
+        setTimeLeft('LIVE NOW');
+      } else {
+        setTimeLeft('');
+      }
+    }, 1000);
+
     return () => clearInterval(timer);
-  }, [dailyMission, user]);
+  }, [dailyMission, navigation]);
 
   const fetchDailyMission = async () => {
+    // If we already know it's attempted, don't bother the server!
+    if (dailyMission?.isAttempted) return;
+
     try {
       const res = await api.get('/api/mcq/daily');
       if (res.data) setDailyMission(res.data);
-    } catch (e) {}
+    } catch (e) {
+      setDailyMission(null);
+    }
   };
 
   const getMissionStatus = () => {
@@ -50,27 +102,20 @@ const HomeScreen = ({ navigation }) => {
     return 'ENDED';
   };
 
-  const updateStatus = () => {
-    const status = getMissionStatus();
-    if (status === 'UPCOMING') {
-      const start = new Date(dailyMission.startTime);
-      const diff = start - new Date();
-      const mins = Math.floor(diff / 60000);
-      const secs = Math.floor((diff % 60000) / 1000);
-      setTimeLeft(`Starts in ${mins}m ${secs}s`);
-    } else if (status === 'LIVE' && user?.isApproved) {
-      // AUTO-START Logic: Jump into the mission if it just started!
-      navigation.navigate('MCQ');
-      setTimeLeft('');
-    } else {
-      setTimeLeft('');
-    }
-  };
-
   const handleStartMission = () => {
-    if (!user?.isApproved) {
-      return alert('Your account is pending admin approval. Please wait for verification.');
+    // Check if the user is approved OR if they have a "Guest Pass" (new registration)
+    const isApproved = user?.status === 'APPROVED';
+    const isGuest = !!route.params?.isNewUser;
+
+    if (dailyMission?.isAttempted) {
+      return toast('Mission already completed. Check rankings later!', 'info');
     }
+
+    if (!isApproved && !isGuest) {
+      return toast('Your account is pending admin approval. Please wait for verification.', 'info');
+    }
+    
+    setShowWelcome(false);
     navigation.navigate('MCQ');
   };
 
@@ -149,11 +194,19 @@ const HomeScreen = ({ navigation }) => {
           <View style={[s.heroCard, status === 'LIVE' && s.heroCardLive]}>
             <View style={s.heroInfo}>
               <Text style={s.heroEmoji}>{status === 'LIVE' ? '🚀' : '⏳'}</Text>
-              <View>
-                <Text style={s.heroTitle}>{dailyMission.subject}</Text>
+              <View style={{ flex: 1 }}>
+                <View style={s.heroHeader}>
+                  <Text style={s.heroTitle}>{dailyMission.subject}</Text>
+                  {timeLeft ? (
+                    <View style={s.timeBadge}>
+                      <Clock size={12} color="#000" />
+                      <Text style={s.timeBadgeText}>{timeLeft}</Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={s.heroSub}>
                   {status === 'UPCOMING' ? `Mission with ${dailyMission.questions?.length || 0} questions starts at ${new Date(dailyMission.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 
-                   status === 'LIVE' ? 'The mission window is OPEN. Jump in now!' : 'You missed today\'s window. See you tomorrow!'}
+                   status === 'LIVE' ? 'The mission window is OPEN. Jump in now!' : 'Today\'s mission has ended. See you tomorrow!'}
                 </Text>
               </View>
             </View>
@@ -161,17 +214,29 @@ const HomeScreen = ({ navigation }) => {
             <TouchableOpacity 
               style={[
                 s.startButton, 
-                status === 'UPCOMING' && s.btnDisabled,
-                status === 'ENDED' && s.btnEnded
+                status === 'UPCOMING' && !isAutoStarting && s.btnDisabled,
+                status === 'ENDED' && s.btnEnded,
+                dailyMission?.isAttempted && s.btnDone,
+                isAutoStarting && s.btnAutoStart
               ]}
               onPress={handleStartMission}
-              disabled={status !== 'LIVE'}
+              disabled={(status !== 'LIVE' && !isAutoStarting) || dailyMission?.isAttempted}
             >
-              <Text style={s.startButtonText}>
-                {status === 'UPCOMING' ? `STARTS AT ${new Date(dailyMission.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 
-                 status === 'LIVE' ? 'START MISSION NOW' : 'WINDOW CLOSED'}
-              </Text>
-              {status === 'LIVE' && <Play color="#000" size={18} fill="#000" />}
+              {isAutoStarting ? (
+                <>
+                  <ActivityIndicator color="#000" size="small" />
+                  <Text style={s.startButtonText}>PREPARING MISSION...</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={s.startButtonText}>
+                    {dailyMission?.isAttempted ? 'MISSION COMPLETED 🏆' : 
+                     status === 'UPCOMING' ? `STARTS AT ${new Date(dailyMission.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 
+                     status === 'LIVE' ? 'START MISSION NOW' : 'WINDOW CLOSED'}
+                  </Text>
+                  {status === 'LIVE' && !dailyMission?.isAttempted && <Play color="#000" size={18} fill="#000" />}
+                </>
+              )}
             </TouchableOpacity>
           </View>
         ) : (
@@ -241,6 +306,56 @@ const HomeScreen = ({ navigation }) => {
           )}
         </View>
       </ScrollView>
+
+      {/* Welcome Onboarding Modal */}
+      <Modal visible={showWelcome} animationType="slide" transparent>
+        <View style={s.welcomeOverlay}>
+          <View style={s.welcomeCard}>
+            <TouchableOpacity style={s.closeIcon} onPress={() => setShowWelcome(false)}>
+              <X color={theme.colors.textMuted} size={24} />
+            </TouchableOpacity>
+            
+            <View style={s.sparkleBox}>
+              <Sparkles color={theme.colors.primary} size={40} />
+            </View>
+            
+            <Text style={s.welcomeTitle}>Welcome Aboard! 🎉</Text>
+            <Text style={s.welcomeSub}>
+              Registration successful. We've unlocked your first mission so you can start preparing immediately!
+            </Text>
+
+            {dailyMission && status === 'LIVE' ? (
+              <View style={s.miniMission}>
+                <View style={s.miniMissionIcon}>
+                  <BookOpen color={theme.colors.primary} size={20} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.miniMissionSubject}>{dailyMission.subject}</Text>
+                  <Text style={s.miniMissionDetail}>{dailyMission.questions?.length || 0} Questions • LIVE NOW</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={s.miniMission}>
+                 <Clock color={theme.colors.textMuted} size={20} />
+                 <Text style={[s.miniMissionDetail, { marginLeft: 10 }]}>Next mission starts soon!</Text>
+              </View>
+            )}
+
+            <TouchableOpacity 
+              style={s.welcomeActionBtn}
+              onPress={handleStartMission}
+              disabled={!dailyMission || status !== 'LIVE'}
+            >
+              <Text style={s.welcomeActionText}>Start First Mission</Text>
+              <ArrowRight color="#000" size={20} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity onPress={() => setShowWelcome(false)} style={{ marginTop: 20 }}>
+              <Text style={s.skipText}>Maybe Later</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -270,11 +385,16 @@ const styles = (theme) => StyleSheet.create({
   heroCardLive: { borderColor: '#10b981', backgroundColor: '#10b98105' },
   heroInfo: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 24 },
   heroEmoji: { fontSize: 32 },
-  heroTitle: { color: theme.colors.text, fontSize: 22, fontWeight: 'bold' },
-  heroSub: { color: theme.colors.textMuted, fontSize: 14, marginTop: 2 },
+  heroTitle: { color: theme.colors.text, fontSize: 20, fontWeight: 'bold' },
+  heroHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 10 },
+  timeBadge: { backgroundColor: theme.colors.primary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  timeBadgeText: { color: '#000', fontSize: 10, fontWeight: 'bold' },
+  heroSub: { color: theme.colors.textMuted, fontSize: 13, marginTop: 2 },
   startButton: { backgroundColor: theme.colors.primary, height: 56, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   btnDisabled: { backgroundColor: theme.colors.border, opacity: 0.7 },
   btnEnded: { backgroundColor: `${theme.colors.error}20`, borderColor: theme.colors.error, borderWidth: 1 },
+  btnDone: { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: theme.colors.border, borderWidth: 1 },
+  btnAutoStart: { backgroundColor: '#fbbf24', shadowColor: '#fbbf24', shadowOpacity: 0.5, shadowRadius: 10, elevation: 8 },
   startButtonText: { color: '#000', fontSize: 18, fontWeight: 'bold' },
 
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -335,7 +455,21 @@ const styles = (theme) => StyleSheet.create({
   adminStatLabel: { color: theme.colors.textMuted, fontSize: 12, marginTop: 4 },
   adminStatDivider: { width: 1, height: 30, backgroundColor: theme.colors.border },
   adminGoBtn: { backgroundColor: theme.colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, gap: 8 },
-  adminGoBtnText: { color: '#000', fontWeight: 'bold', fontSize: 14 }
+  adminGoBtnText: { color: '#000', fontWeight: 'bold', fontSize: 14 },
+
+  welcomeOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  welcomeCard: { backgroundColor: theme.colors.surface, borderRadius: 32, padding: 32, width: '100%', alignItems: 'center', borderWidth: 1, borderColor: theme.colors.border },
+  closeIcon: { position: 'absolute', top: 20, right: 20 },
+  sparkleBox: { width: 80, height: 80, borderRadius: 40, backgroundColor: `${theme.colors.primary}20`, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  welcomeTitle: { color: theme.colors.text, fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 12 },
+  welcomeSub: { color: theme.colors.textMuted, fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 32 },
+  miniMission: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', padding: 16, borderRadius: 20, width: '100%', marginBottom: 32, borderWidth: 1, borderColor: theme.colors.border },
+  miniMissionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: `${theme.colors.primary}20`, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  miniMissionSubject: { color: theme.colors.text, fontSize: 16, fontWeight: 'bold' },
+  miniMissionDetail: { color: theme.colors.textMuted, fontSize: 12, marginTop: 2 },
+  welcomeActionBtn: { backgroundColor: theme.colors.primary, height: 60, borderRadius: 20, width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, shadowColor: theme.colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
+  welcomeActionText: { color: '#000', fontSize: 17, fontWeight: 'bold' },
+  skipText: { color: theme.colors.textMuted, fontSize: 15, fontWeight: '600' }
 });
 
 export default HomeScreen;

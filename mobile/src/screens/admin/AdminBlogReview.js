@@ -43,12 +43,15 @@ const AdminBlogReview = ({ navigation }) => {
 
   const handleApprove = async (id) => {
     try {
+      setLoading(true);
       await api.patch(`/api/admin/blog/approve/${id}`);
       setBlogs(prev => prev.filter(b => b._id !== id));
       setPublishedCount(prev => prev + 1);
       Alert.alert('Success', 'Blog published to students!');
     } catch (error) {
       Alert.alert('Error', 'Failed to publish blog');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -60,6 +63,7 @@ const AdminBlogReview = ({ navigation }) => {
   const confirmDelete = async () => {
     if (!blogToDelete) return;
     try {
+      setLoading(true);
       await api.delete(`/api/admin/blog/${blogToDelete}`);
       setBlogs(prev => prev.filter(b => b._id !== blogToDelete));
       if (activeTab === 'published') setPublishedCount(prev => prev - 1);
@@ -69,6 +73,7 @@ const AdminBlogReview = ({ navigation }) => {
     } finally {
       setConfirmVisible(false);
       setBlogToDelete(null);
+      setLoading(false);
     }
   };
 
@@ -76,7 +81,7 @@ const AdminBlogReview = ({ navigation }) => {
     setLoading(true);
     try {
       await api.post('/api/admin/blog/generate');
-      fetchPending();
+      fetchData();
       Alert.alert('Success', 'AI has generated fresh news for review!');
     } catch (error) {
       Alert.alert('Error', 'AI generation failed');

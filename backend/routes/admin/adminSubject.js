@@ -7,6 +7,7 @@ router.use(adminOnly);
 
 router.get('/', adminSubjectController.getAllSubjects);
 router.post('/', adminSubjectController.createSubject);
+router.put('/:id', adminSubjectController.updateSubject);
 router.patch('/toggle/:id', adminSubjectController.toggleSubject);
 router.delete('/:id', adminSubjectController.deleteSubject);
 

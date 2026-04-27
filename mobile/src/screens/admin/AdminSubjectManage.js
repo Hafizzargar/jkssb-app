@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, TextInput, Modal, Switch, Platform } from 'react-native';
-import { ChevronLeft, Plus, Trash2, BookOpen, Layers, Info } from 'lucide-react-native';
+import { ChevronLeft, Plus, Trash2, BookOpen, Layers, Edit2 } from 'lucide-react-native';
 import api from '../../utils/api';
 import { useTheme } from '../../utils/useTheme';
 import { spacing, borderRadius } from '../../theme';
@@ -11,8 +11,9 @@ const AdminSubjectManage = ({ navigation }) => {
   const theme = useTheme();
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [newSubject, setNewSubject] = useState({ name: '', code: '', description: '' });
+  const [showModal, setShowModal] = useState(false);
+  const [editingSubject, setEditingSubject] = useState(null);
+  const [formData, setFormData] = useState({ name: '', code: '', description: '' });
 
   // Custom Confirmation Modal State
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -34,17 +35,34 @@ const AdminSubjectManage = ({ navigation }) => {
     }
   };
 
-  const handleAdd = async () => {
-    if (!newSubject.name || !newSubject.code) return Alert.alert('Error', 'Name and Code are required');
+  const handleOpenAdd = () => {
+    setEditingSubject(null);
+    setFormData({ name: '', code: '', description: '' });
+    setShowModal(true);
+  };
+
+  const handleOpenEdit = (subject) => {
+    setEditingSubject(subject);
+    setFormData({ name: subject.name, code: subject.code, description: subject.description || '' });
+    setShowModal(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.code) return Alert.alert('Error', 'Name and Code are required');
     try {
       setLoading(true);
-      await api.post('/api/admin/subject', newSubject);
-      setShowAdd(false);
-      setNewSubject({ name: '', code: '', description: '' });
+      if (editingSubject) {
+        await api.put(`/api/admin/subject/${editingSubject._id}`, formData);
+        Alert.alert('Success', 'Subject updated successfully');
+      } else {
+        await api.post('/api/admin/subject', formData);
+        Alert.alert('Success', 'Subject added successfully');
+      }
+      setShowModal(false);
+      setFormData({ name: '', code: '', description: '' });
       fetchSubjects();
-      Alert.alert('Success', 'Subject added successfully');
     } catch (error) {
-      Alert.alert('Error', error.response?.data?.message || 'Failed to add subject');
+      Alert.alert('Error', error.response?.data?.message || 'Action failed');
     } finally {
       setLoading(false);
     }
@@ -90,7 +108,7 @@ const AdminSubjectManage = ({ navigation }) => {
           <Text style={s.headerTitle}>Subject Management</Text>
           <Text style={s.headerSub}>{subjects.length} Categories Configured</Text>
         </View>
-        <TouchableOpacity style={s.plusBtn} onPress={() => setShowAdd(true)}>
+        <TouchableOpacity style={s.plusBtn} onPress={handleOpenAdd}>
           <Plus color="#000" size={20} />
         </TouchableOpacity>
       </View>
@@ -102,7 +120,7 @@ const AdminSubjectManage = ({ navigation }) => {
           <View style={s.emptyState}>
             <Layers color={theme.colors.textMuted} size={48} />
             <Text style={s.emptyText}>No subjects created yet</Text>
-            <TouchableOpacity style={s.addBtnLarge} onPress={() => setShowAdd(true)}>
+            <TouchableOpacity style={s.addBtnLarge} onPress={handleOpenAdd}>
               <Text style={s.addBtnLargeText}>Add Your First Subject</Text>
             </TouchableOpacity>
           </View>
@@ -122,6 +140,9 @@ const AdminSubjectManage = ({ navigation }) => {
                   </View>
                   <Text style={s.cardDesc} numberOfLines={1}>{sub.description || 'No description provided'}</Text>
                 </View>
+                <TouchableOpacity style={s.editBtn} onPress={() => handleOpenEdit(sub)}>
+                  <Edit2 color={theme.colors.textMuted} size={18} />
+                </TouchableOpacity>
               </View>
               
               <View style={s.cardActions}>
@@ -143,13 +164,13 @@ const AdminSubjectManage = ({ navigation }) => {
         )}
       </ScrollView>
 
-      {/* Add Modal */}
-      <Modal visible={showAdd} animationType="slide" transparent>
+      {/* Add/Edit Modal */}
+      <Modal visible={showModal} animationType="slide" transparent>
         <View style={s.modalOverlay}>
           <View style={s.modalContent}>
             <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Add New Subject</Text>
-              <TouchableOpacity onPress={() => setShowAdd(false)}>
+              <Text style={s.modalTitle}>{editingSubject ? 'Edit Subject' : 'Add New Subject'}</Text>
+              <TouchableOpacity onPress={() => setShowModal(false)}>
                 <Text style={{ color: theme.colors.textMuted }}>Cancel</Text>
               </TouchableOpacity>
             </View>
@@ -160,8 +181,8 @@ const AdminSubjectManage = ({ navigation }) => {
                 style={s.input} 
                 placeholder="e.g. Accountancy" 
                 placeholderTextColor={theme.colors.textMuted}
-                value={newSubject.name}
-                onChangeText={(t) => setNewSubject({ ...newSubject, name: t })}
+                value={formData.name}
+                onChangeText={(t) => setFormData({ ...formData, name: t })}
               />
 
               <Text style={s.label}>Subject Code (Short)</Text>
@@ -169,8 +190,8 @@ const AdminSubjectManage = ({ navigation }) => {
                 style={s.input} 
                 placeholder="e.g. ACC" 
                 placeholderTextColor={theme.colors.textMuted}
-                value={newSubject.code}
-                onChangeText={(t) => setNewSubject({ ...newSubject, code: t })}
+                value={formData.code}
+                onChangeText={(t) => setFormData({ ...formData, code: t })}
               />
 
               <Text style={s.label}>Description (Optional)</Text>
@@ -178,13 +199,13 @@ const AdminSubjectManage = ({ navigation }) => {
                 style={[s.input, { height: 80, textAlignVertical: 'top' }]} 
                 placeholder="What is this subject about?" 
                 placeholderTextColor={theme.colors.textMuted}
-                value={newSubject.description}
-                onChangeText={(t) => setNewSubject({ ...newSubject, description: t })}
+                value={formData.description}
+                onChangeText={(t) => setFormData({ ...formData, description: t })}
                 multiline
               />
 
-              <TouchableOpacity style={s.submitBtn} onPress={handleAdd}>
-                <Text style={s.submitBtnText}>Create Subject</Text>
+              <TouchableOpacity style={s.submitBtn} onPress={handleSubmit}>
+                <Text style={s.submitBtnText}>{editingSubject ? 'Update Subject' : 'Create Subject'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -220,7 +241,7 @@ const styles = (theme) => StyleSheet.create({
   cardDisabled: { opacity: 0.6 },
   cardInfo: { flexDirection: 'row', gap: 16, alignItems: 'center', marginBottom: 16 },
   iconBox: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4, flex: 1 },
   cardName: { color: theme.colors.text, fontSize: 16, fontWeight: 'bold' },
   codeBadge: { backgroundColor: `${theme.colors.primary}15`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   codeText: { color: theme.colors.primary, fontSize: 10, fontWeight: 'bold' },
@@ -236,7 +257,9 @@ const styles = (theme) => StyleSheet.create({
   label: { color: theme.colors.text, fontSize: 14, fontWeight: 'bold', marginTop: 16, marginBottom: 8 },
   input: { backgroundColor: theme.colors.surface, borderRadius: 12, padding: 14, color: theme.colors.text, borderWidth: 1, borderColor: theme.colors.border },
   submitBtn: { backgroundColor: theme.colors.primary, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 32 },
-  submitBtnText: { color: '#000', fontWeight: 'bold', fontSize: 16 }
+  submitBtnText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
+  editBtn: { padding: 8 },
+  fullLoadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 10 }
 });
 
 export default AdminSubjectManage;

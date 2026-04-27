@@ -48,18 +48,19 @@ const validateMCQs = (questions) => {
 const generateMCQs = async (subject, difficulty = 'MEDIUM', count = 20) => {
   console.log(`♊ Gemini: Generating ${count} MCQs for ${subject}...`);
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-flash-latest",
+      generationConfig: { responseMimeType: "application/json" }
+    });
     const prompt = `Generate exactly ${count} high-quality MCQs for the JKSSB exam. 
                     Subject: ${subject}, Difficulty: ${difficulty}. 
                     Output MUST be a valid JSON array of objects. 
-                    NO markdown backticks, NO "json" prefix, just the raw array.
                     Structure:
                     [{ "question": "...", "options": ["A)...", "B)...", "C)...", "D)..."], "correct": "A", "explanation": "..." }]
                     Rules:
                     1. Provide exactly ${count} questions.
                     2. Options MUST start with "A) ", "B) ", etc.
-                    3. Correct answer MUST be just the letter "A", "B", "C", or "D".
-                    4. Return ONLY the JSON.`;
+                    3. Correct answer MUST be just the letter "A", "B", "C", or "D".`;
 
     const result = await model.generateContent(prompt);
     const text = result.response.text();
@@ -83,10 +84,16 @@ const generateMCQs = async (subject, difficulty = 'MEDIUM', count = 20) => {
     }
     
     const validated = validateMCQs(questions);
+    if (validated.length === 0 && questions.length > 0) {
+      console.warn('⚠️ Gemini: All generated MCQs failed validation.');
+    }
     console.log(`✅ Validated ${validated.length} / ${count} questions.`);
     return validated;
   } catch (error) {
-    console.error('❌ Gemini MCQ Error:', error);
+    console.error('❌ Gemini MCQ Error:', error.message);
+    if (error.message.includes('leaked')) {
+      console.error('🛑 CRITICAL: YOUR API KEY HAS BEEN DEACTIVATED DUE TO A LEAK.');
+    }
     return [];
   }
 };
@@ -97,13 +104,15 @@ const generateMCQs = async (subject, difficulty = 'MEDIUM', count = 20) => {
 const generateBlogs = async () => {
   console.log(`♊ Gemini: Generating daily news blogs...`);
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-flash-latest",
+      generationConfig: { responseMimeType: "application/json" }
+    });
     const prompt = `Generate 3 current affairs blog posts for students in Jammu & Kashmir preparing for JKSSB exams.
                     One post for J&K news, one for India, and one for World.
                     Include a catchy title, a suggested high-quality image URL from Unsplash (e.g., https://images.unsplash.com/photo-...?auto=format&fit=crop&q=80&w=1000 based on subject), and the content.
                     Format strictly as a JSON array:
-                    [{ "title": "...", "content": "...", "category": "J&K | INDIA | WORLD", "image": "unsplash_url" }]
-                    Only return the JSON.`;
+                    [{ "title": "...", "content": "...", "category": "J&K | INDIA | WORLD", "image": "unsplash_url" }]`;
 
     const result = await model.generateContent(prompt);
     const text = result.response.text();
@@ -114,7 +123,10 @@ const generateBlogs = async () => {
       image: b.image || `https://source.unsplash.com/featured/?${b.category.toLowerCase()},news`
     }));
   } catch (error) {
-    console.error('❌ Gemini Blog Error:', error);
+    console.error('❌ Gemini Blog Error:', error.message);
+    if (error.message.includes('leaked')) {
+      console.error('🛑 CRITICAL: YOUR API KEY HAS BEEN DEACTIVATED DUE TO A LEAK.');
+    }
     return [];
   }
 };
@@ -124,7 +136,7 @@ const generateBlogs = async () => {
  */
 const refineTitle = async (oldTitle, content) => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
     const prompt = `Given the blog title: "${oldTitle}" and content: "${content.substring(0, 500)}...", 
                     suggest a more engaging, click-worthy, and SEO-friendly title for students.
                     Return ONLY the title string.`;

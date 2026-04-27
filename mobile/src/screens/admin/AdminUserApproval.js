@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, ActivityIndicator, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, ActivityIndicator, StatusBar, Alert } from 'react-native';
 import { UserCheck, UserX, ArrowLeft, Mail, Phone, Calendar } from 'lucide-react-native';
 import { useTheme } from '../../utils/useTheme';
 import { spacing, borderRadius } from '../../theme';
@@ -32,9 +32,22 @@ const AdminUserApproval = ({ navigation }) => {
     try {
       await client.post('/auth/approve-user', { userId });
       toast('User approved successfully!', 'success');
-      setUsers(users.filter(u => u._id !== userId));
+      setUsers(users.map(u => u._id === userId ? { ...u, status: 'APPROVED' } : u));
     } catch (error) {
-      // Interceptor handles error
+      // Handled by interceptor
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleDisable = async (userId) => {
+    setProcessingId(userId);
+    try {
+      await client.delete(`/auth/disable-user/${userId}`);
+      toast('User disabled successfully', 'info');
+      setUsers(users.map(u => u._id === userId ? { ...u, status: 'DISABLED' } : u));
+    } catch (error) {
+      // Handled by interceptor
     } finally {
       setProcessingId(null);
     }
@@ -45,8 +58,25 @@ const AdminUserApproval = ({ navigation }) => {
   const renderUser = ({ item }) => (
     <View style={s.userCard}>
       <View style={s.userInfo}>
-        <Text style={s.userName}>{item.name}</Text>
-        <Text style={s.userHandle}>@{item.username}</Text>
+        <View style={s.userHeaderRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.userName}>{item.name}</Text>
+            <Text style={s.userHandle}>@{item.username}</Text>
+          </View>
+          <View style={[
+            s.statusBadge, 
+            item.status === 'APPROVED' ? s.statusApproved : 
+            item.status === 'DISABLED' ? s.statusDisabled : s.statusPending
+          ]}>
+            <Text style={[
+              s.statusText, 
+              item.status === 'APPROVED' ? s.textApproved : 
+              item.status === 'DISABLED' ? s.textDisabled : s.textPending
+            ]}>
+              {item.status || 'PENDING'}
+            </Text>
+          </View>
+        </View>
         
         <View style={s.detailRow}>
           <Mail color={theme.colors.textMuted} size={14} />
@@ -65,20 +95,42 @@ const AdminUserApproval = ({ navigation }) => {
       </View>
 
       <View style={s.actions}>
-        <TouchableOpacity 
-          style={[s.actionButton, s.approveButton]} 
-          onPress={() => handleApprove(item._id)}
-          disabled={processingId === item._id}
-        >
-          {processingId === item._id ? (
-            <ActivityIndicator color="#000" size="small" />
-          ) : (
-            <>
-              <UserCheck color="#000" size={18} />
-              <Text style={s.approveText}>Approve</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {item.status !== 'APPROVED' && (
+          <TouchableOpacity 
+            style={[s.actionButton, s.approveButton]} 
+            onPress={() => handleApprove(item._id)}
+            disabled={processingId === item._id}
+          >
+            {processingId === item._id ? (
+              <ActivityIndicator color="#000" size="small" />
+            ) : (
+              <>
+                <UserCheck color="#000" size={18} />
+                <Text style={s.approveText}>{item.status === 'DISABLED' ? 'Enable' : 'Approve'}</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {item.status !== 'DISABLED' && (
+          <TouchableOpacity 
+            style={[s.actionButton, s.disableButton]} 
+            onPress={() => {
+              Alert.alert(
+                'Disable User',
+                'Are you sure you want to disable this user? They will not be able to login.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Disable', style: 'destructive', onPress: () => handleDisable(item._id) }
+                ]
+              );
+            }}
+            disabled={processingId === item._id}
+          >
+            <UserX color={theme.colors.error} size={18} />
+            <Text style={s.disableText}>Disable</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -90,7 +142,7 @@ const AdminUserApproval = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton}>
           <ArrowLeft color={theme.colors.text} size={24} />
         </TouchableOpacity>
-        <Text style={s.title}>User Approvals</Text>
+        <Text style={s.title}>User Management</Text>
       </View>
 
       {loading ? (
@@ -106,7 +158,7 @@ const AdminUserApproval = ({ navigation }) => {
           ListEmptyComponent={
             <View style={s.centered}>
               <UserCheck color={theme.colors.textMuted} size={64} opacity={0.2} />
-              <Text style={s.emptyText}>No users awaiting approval</Text>
+              <Text style={s.emptyText}>No registered users found</Text>
             </View>
           }
         />
@@ -154,17 +206,53 @@ const styles = (theme) => StyleSheet.create({
   userInfo: {
     marginBottom: spacing.lg,
   },
+  userHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
   userName: {
     fontSize: 18,
     fontWeight: '700',
     color: theme.colors.text,
-    marginBottom: 2,
   },
   userHandle: {
     fontSize: 14,
     color: theme.colors.primary,
     fontWeight: '600',
-    marginBottom: 12,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  statusApproved: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderColor: '#10b981',
+  },
+  statusPending: {
+    backgroundColor: 'rgba(251, 191, 36, 0.1)',
+    borderColor: '#fbbf24',
+  },
+  statusDisabled: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: theme.colors.error,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  textApproved: {
+    color: '#10b981',
+  },
+  textPending: {
+    color: '#fbbf24',
+  },
+  textDisabled: {
+    color: theme.colors.error,
   },
   detailRow: {
     flexDirection: 'row',
@@ -194,6 +282,16 @@ const styles = (theme) => StyleSheet.create({
   },
   approveText: {
     color: '#000',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  disableButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+    borderWidth: 1,
+    borderColor: theme.colors.error,
+  },
+  disableText: {
+    color: theme.colors.error,
     fontWeight: '700',
     fontSize: 14,
   },

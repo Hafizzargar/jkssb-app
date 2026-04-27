@@ -125,6 +125,11 @@ const AdminMCQReview = ({ navigation }) => {
   };
 
   const handleManualSubmit = async () => {
+    if (!testDate || !startTime || !endTime) {
+      toast('Please fill in Date, Start Time, and End Time', 'error');
+      return;
+    }
+
     const subjectToUse = value === 'MANUAL' ? customSubject : value;
     if (!subjectToUse) {
       toast('Please select or enter a subject', 'error');
@@ -136,8 +141,36 @@ const AdminMCQReview = ({ navigation }) => {
       return;
     }
 
-    const startObj = new Date(`${testDate}T${startTime}:00`);
-    const endObj = new Date(`${testDate}T${endTime}:00`);
+    // Smart Parsing: Auto-fix common typing issues
+    const normalizeDate = (d) => {
+      const parts = d.trim().replace(/\//g, '-').split('-');
+      if (parts.length !== 3) return d;
+      return [parts[0], parts[1].padStart(2, '0'), parts[2].padStart(2, '0')].join('-');
+    };
+
+    const normalizeTime = (t) => {
+      const parts = t.trim().split(':');
+      if (parts.length !== 2) return t;
+      return [parts[0].padStart(2, '0'), parts[1].padStart(2, '0')].join(':');
+    };
+
+    const cleanDate = normalizeDate(testDate);
+    const cleanStart = normalizeTime(startTime);
+    const cleanEnd = normalizeTime(endTime);
+
+    const startObj = new Date(`${cleanDate}T${cleanStart}:00`);
+    const endObj = new Date(`${cleanDate}T${cleanEnd}:00`);
+    const now = new Date();
+
+    if (isNaN(startObj.getTime()) || isNaN(endObj.getTime())) {
+      toast('Invalid Date or Time. Use YYYY-MM-DD (e.g. 2026-04-27) and HH:mm (e.g. 14:30)', 'error');
+      return;
+    }
+
+    if (startObj < now) {
+      toast('Mission start time cannot be in the past.', 'error');
+      return;
+    }
 
     if (endObj <= startObj) {
       toast('End time must be after Start time', 'error');
@@ -167,6 +200,7 @@ const AdminMCQReview = ({ navigation }) => {
         id: editingSetId,
         subject: subjectToUse,
         questions,
+        date: testDate, // Send explicit date string to prevent TZ shift
         testDuration: parseInt(totalMinutes),
         timePerQuestion: parseInt(secondsPerQ),
         startTime: startObj,
@@ -208,22 +242,34 @@ const AdminMCQReview = ({ navigation }) => {
     }
   };
 
-  const handleApprove = (id, questions = [], subject = 'GK_JK') => {
-    console.log('🔘 APPROVE CLICKED:', id, subject);
-    setQuestions(questions);
-    setEditingSetId(id);
+  const handleEditMission = (set) => {
+    console.log('🔘 EDIT CLICKED:', set._id, set.subject);
+    setEditingSetId(set._id);
+    setQuestions([...set.questions]);
     
-    // Select the subject in the dropdown
-    const item = items.find(i => i.value === subject || i.label === subject);
+    // Select the subject
+    const item = items.find(i => i.value === set.subject || i.label === set.subject);
     if (item) setValue(item.value);
-    else { setValue('MANUAL'); setCustomSubject(subject); }
+    else { setValue('MANUAL'); setCustomSubject(set.subject); }
+
+    // Populate scheduling
+    if (set.date) setTestDate(set.date);
+    if (set.testDuration) setTotalMinutes(set.testDuration.toString());
+    if (set.timePerQuestion) setSecondsPerQ(set.timePerQuestion.toString());
+    
+    if (set.startTime) {
+      const start = new Date(set.startTime);
+      setStartTime(`${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`);
+    }
 
     setShowManual(true);
   };
 
   const handleAIAutoFill = async () => {
     console.log('✨ AI Fill Clicked. Value:', value, 'Custom:', customSubject);
-    const subjectToUse = value === 'MANUAL' ? customSubject : value;
+    const subjectCode = value === 'MANUAL' ? customSubject : value;
+    const selectedSubjectObj = subjects.find(s => s.code === subjectCode);
+    const subjectToUse = selectedSubjectObj ? selectedSubjectObj.name : subjectCode;
     
     if (!subjectToUse) {
       console.log('⚠️ AI Fill blocked: No subject selected');
@@ -313,24 +359,6 @@ const AdminMCQReview = ({ navigation }) => {
           <Text style={s.headerSub}>Advanced Mode</Text>
         </View>
         <TouchableOpacity 
-          style={s.genHeaderBtn} 
-          onPress={async () => {
-            try {
-              setLoading(true);
-              await api.post('/api/admin/mcq/generate');
-              Alert.alert('Success', 'Gemini is drafting a new set!');
-              fetchData();
-            } catch (err) {
-              Alert.alert('Error', 'Failed to trigger AI');
-            } finally {
-              setLoading(false);
-            }
-          }}
-        >
-          <Sparkles color="#000" size={16} />
-          <Text style={s.genHeaderText}>Gemini AI</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
           style={s.plusBtn} 
           onPress={() => {
             resetManual();
@@ -358,26 +386,6 @@ const AdminMCQReview = ({ navigation }) => {
         </View>
 
       <ScrollView style={s.content} showsVerticalScrollIndicator={false}>
-        <View style={s.tabActions}>
-          <TouchableOpacity 
-            style={s.generateBtn} 
-            onPress={async () => {
-              try {
-                setLoading(true);
-                await api.post('/api/admin/mcq/generate');
-                Alert.alert('Success', 'AI is generating a new draft. Please refresh in a moment.');
-                fetchData();
-              } catch (err) {
-                Alert.alert('Error', 'Failed to trigger AI generation');
-              } finally {
-                setLoading(false);
-              }
-            }}
-          >
-            <Sparkles color="#000" size={16} />
-            <Text style={s.generateBtnText}>Generate AI Draft</Text>
-          </TouchableOpacity>
-        </View>
 
         {(activeTab === 'pending' ? pendingSets : activeSets).length === 0 ? (
           <View style={s.emptyState}>
@@ -428,7 +436,9 @@ const AdminMCQReview = ({ navigation }) => {
                   </Text>
                   <Text style={s.bullet}>•</Text>
                   <Calendar size={14} color={theme.colors.textMuted} />
-                  <Text style={s.timeText}>{new Date(set.date).toDateString()}</Text>
+                  <Text style={s.timeText}>
+                    {set.date ? new Date(set.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'No Date'}
+                  </Text>
                 </View>
 
                 <Text style={s.cardMeta}>{set.questions.length} Questions Prepared</Text>
@@ -438,7 +448,7 @@ const AdminMCQReview = ({ navigation }) => {
                     <>
                       <TouchableOpacity 
                         style={[s.actionBtn, s.approveBtn]}
-                        onPress={() => handleApprove(set._id, set.questions, set.subject)}
+                        onPress={() => handleEditMission(set)}
                       >
                         <CheckCircle color="#000" size={18} />
                         <Text style={s.actionText}>Approve & Schedule</Text>
@@ -454,7 +464,7 @@ const AdminMCQReview = ({ navigation }) => {
                     <>
                       <TouchableOpacity 
                         style={[s.actionBtn, s.approveBtn, { flex: 1.5, backgroundColor: `${theme.colors.primary}20`, borderColor: theme.colors.primary, borderWidth: 1 }]}
-                        onPress={() => handleApprove(set._id, set.questions, set.subject)}
+                        onPress={() => handleEditMission(set)}
                       >
                         <Settings color={theme.colors.primary} size={18} />
                         <Text style={[s.actionText, { color: theme.colors.primary }]}>Edit Mission</Text>
@@ -588,8 +598,18 @@ const AdminMCQReview = ({ navigation }) => {
                         <TextInput style={[s.input, { flex: 1, marginBottom: 8 }]} placeholder={`Option ${String.fromCharCode(65 + oIdx)}`} value={opt} onChangeText={t => updateOption(idx, oIdx, t)} />
                       </View>
                     ))}
-                    <Text style={s.subLabel}>Correct</Text>
-                    <TextInput style={s.input} placeholder="Correct answer text" value={q.correct} onChangeText={t => updateQuestion(idx, 'correct', t)} />
+                    <Text style={s.subLabel}>Correct Option</Text>
+                    <View style={s.correctSelector}>
+                      {['A', 'B', 'C', 'D'].map((letter) => (
+                        <TouchableOpacity 
+                          key={letter}
+                          style={[s.correctBtn, q.correct === letter && s.correctBtnActive]}
+                          onPress={() => updateQuestion(idx, 'correct', letter)}
+                        >
+                          <Text style={[s.correctBtnText, q.correct === letter && s.correctBtnTextActive]}>{letter}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
                 ))}
               </View>
@@ -600,6 +620,16 @@ const AdminMCQReview = ({ navigation }) => {
               </TouchableOpacity>
               <View style={{ height: 100 }} />
             </ScrollView>
+
+            {loading && (
+              <View style={s.loadingOverlay}>
+                <View style={s.loadingCard}>
+                  <ActivityIndicator size="large" color={theme.colors.primary} />
+                  <Text style={s.loadingText}>Gemini AI is Working</Text>
+                  <Text style={s.loadingSubText}>Researching and drafting questions for you...</Text>
+                </View>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -618,33 +648,6 @@ const AdminMCQReview = ({ navigation }) => {
 };
 
 const styles = (theme) => StyleSheet.create({
-  genHeaderBtn: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginRight: 12
-  },
-  genHeaderText: { color: '#000', fontSize: 12, fontWeight: 'bold' },
-  tabActions: { paddingHorizontal: 20, paddingTop: 15, paddingBottom: 5 },
-  generateBtn: {
-    backgroundColor: theme.colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 10,
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4
-  },
-  generateBtnText: { color: '#000', fontSize: 16, fontWeight: '700' },
   container: { flex: 1, backgroundColor: theme.colors.background },
   header: { flexDirection: 'row', alignItems: 'center', padding: spacing.lg, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
   backBtn: { marginRight: 12 },
@@ -741,7 +744,12 @@ const styles = (theme) => StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginTop: 8
-  }
+  },
+  correctSelector: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  correctBtn: { flex: 1, height: 44, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border },
+  correctBtnActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  correctBtnText: { color: theme.colors.textMuted, fontWeight: 'bold' },
+  correctBtnTextActive: { color: '#000' }
 });
 
 export default AdminMCQReview;

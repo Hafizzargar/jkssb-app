@@ -20,8 +20,12 @@ exports.getTodaysMCQs = async (req, res) => {
     }
 
     const now = new Date();
+    const today = new Date().toLocaleDateString('en-CA');
     // Look for the most recent ACTIVE mission for today
-    const mcqs = await DailyMCQ.findOne({ status: 'ACTIVE' }).sort({ startTime: -1 });
+    const mcqs = await DailyMCQ.findOne({ 
+      date: today,
+      status: 'ACTIVE' 
+    }).sort({ startTime: -1 });
 
     if (!mcqs) return res.status(404).json({ message: 'No questions scheduled' });
 
@@ -30,16 +34,27 @@ exports.getTodaysMCQs = async (req, res) => {
 
     const result = { ...mcqs.toObject() };
 
+    // Check if THIS user has already attempted this mission
+    const userId = req.session.userId;
+    let history = [];
+    if (userId) {
+      const attempt = await MCQAttempt.findOne({ user: userId, dailyMCQ: mcqs._id });
+      result.isAttempted = !!attempt;
+
+      // Fetch user history (last 5 attempts)
+      history = await MCQAttempt.find({ user: userId })
+        .sort({ attemptedAt: -1 })
+        .limit(5)
+        .select('score subjectCode attemptedAt');
+    }
+
     // Always include these flags so the frontend knows how to handle the UI
-    result.isTooEarly = now < startTime;
+    // Added 15-second grace period (15000ms) to match frontend auto-start UI
+    result.isTooEarly = now < new Date(startTime.getTime() - 15000); 
     result.isTooLate = now > endTime;
     result.opensAt = startTime;
     result.closedAt = endTime;
-
-    // Cache the result to prevent DB load
-    if (redisClient) {
-      await redisClient.setEx(cacheKey, 60, JSON.stringify(result)); // 1 min cache
-    }
+    result.history = history;
 
     res.json(result);
   } catch (error) {
@@ -116,30 +131,56 @@ exports.submitMCQs = async (req, res) => {
     const userId = req.session.userId;
     const today = new Date().toISOString().split('T')[0];
 
-    const mcqSet = await DailyMCQ.findOne({ _id: answers[0]?.mcqSetId || { $exists: true }, status: 'ACTIVE' });
-    if (!mcqSet) return res.status(404).json({ message: 'Active MCQ set not found' });
+    // Find the specific MCQ set for this submission
+    const mcqSetId = answers[0]?.mcqSetId;
+    if (!mcqSetId) return res.status(400).json({ message: 'Missing MCQ Set ID' });
+
+    const mcqSet = await DailyMCQ.findById(mcqSetId);
+    if (!mcqSet || mcqSet.status !== 'ACTIVE') {
+      return res.status(404).json({ message: 'Active mission not found' });
+    }
 
     // 1. Timing Check (Now must be before endTime)
     const now = new Date();
-    if (now > new Date(mcqSet.endTime)) {
+    const endTime = new Date(mcqSet.endTime);
+    if (now > endTime) {
       return res.status(403).json({ message: 'Submission window closed for this mission.' });
     }
 
-    // 2. Prevent Double Submission
-    const existing = await MCQAttempt.findOne({ user: userId, attemptedAt: { $gte: new Date(today) } });
-    if (existing) return res.status(400).json({ message: 'Already submitted today' });
+    // 2. Prevent Double Submission for the SPECIFIC MISSION
+    const existing = await MCQAttempt.findOne({ user: userId, dailyMCQ: mcqSetId });
+    if (existing) {
+      return res.status(400).json({ 
+        message: 'Submission Rejected: You have already completed this specific mission.',
+        alreadySubmitted: true
+      });
+    }
 
     // 3. Calculate Score
     let totalScore = 0;
     const processedAnswers = answers.map(userAns => {
       const question = mcqSet.questions.find(q => q.question === userAns.q);
-      const isCorrect = question && question.correct === userAns.ans;
-      if (isCorrect) totalScore += 4;
-      else if (userAns.ans !== 'NONE') totalScore -= 1;
+      
+      // Map the selected text to its letter (A, B, C, or D)
+      let selectedLetter = 'NONE';
+      if (userAns.ans !== 'NONE' && question) {
+        const optIndex = question.options.indexOf(userAns.ans);
+        if (optIndex !== -1) {
+          selectedLetter = String.fromCharCode(65 + optIndex); // 0 -> A, 1 -> B, etc.
+        }
+      }
+
+      const isCorrect = question && question.correct === selectedLetter;
+      
+      if (isCorrect) {
+        totalScore += 4;
+      } else if (selectedLetter !== 'NONE') {
+        totalScore -= 1; // Negative marking for wrong answers
+      }
       
       return {
         questionId: question?._id || 'unknown',
-        selectedOption: userAns.ans,
+        selectedOption: selectedLetter,
         isCorrect
       };
     });
@@ -194,29 +235,19 @@ exports.submitMCQs = async (req, res) => {
 exports.getResults = async (req, res) => {
   try {
     const userId = req.session.userId;
-    const today = new Date().toISOString().split('T')[0];
+    
+    // Find the latest attempt for this user and populate the mission questions
+    const attempt = await MCQAttempt.findOne({ user: userId })
+      .sort({ attemptedAt: -1 })
+      .populate('dailyMCQ');
 
-    const attempt = await MCQAttempt.findOne({ 
-      user: userId, 
-      attemptedAt: { $gte: new Date(today) } 
-    }).populate('dailyMCQ');
-
-    if (!attempt) return res.status(404).json({ message: 'No attempt found for today' });
-
-    // 5-minute delay check
-    const waitTime = 5 * 60 * 1000;
-    const elapsed = new Date() - attempt.attemptedAt;
-
-    if (elapsed < waitTime) {
-      const remaining = Math.ceil((waitTime - elapsed) / 1000 / 60);
-      return res.status(403).json({ 
-        message: `Results are locked. Please wait ${remaining} more minutes.`,
-        readyIn: remaining
-      });
+    if (!attempt) {
+      return res.status(404).json({ message: 'No results found.' });
     }
 
     res.json(attempt);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Get Results Error:', error);
+    res.status(500).json({ message: 'Server error fetching results.' });
   }
 };

@@ -99,14 +99,17 @@ const MainTabs = () => {
 /**
  * Wraps MainTabs to show a lock overlay if the user is pending
  */
-const MainWrapper = () => {
+const MainWrapper = ({ route }) => {
   const { user } = useSelector((state) => state.auth);
+  const isNewUser = route.params?.isNewUser;
+
   if (!user) return null;
   
   return (
     <View style={{ flex: 1 }}>
       <MainTabs />
-      {user?.status === 'PENDING' && <LockedOverlay />}
+      {/* Show lock only if PENDING and NOT a fresh registration */}
+      {user?.status === 'PENDING' && !isNewUser && <LockedOverlay />}
     </View>
   );
 };
