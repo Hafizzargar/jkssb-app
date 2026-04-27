@@ -33,6 +33,21 @@ const AdminMCQReview = ({ navigation }) => {
   const [endTime, setEndTime] = useState('12:05');
   const [startPeriod, setStartPeriod] = useState('PM'); // AM | PM
   const [endPeriod, setEndPeriod] = useState('PM'); // AM | PM
+
+  const format12h = (text, setTime, setPeriod) => {
+    setTime(text);
+    if (text.includes(':')) {
+      const [hStr, mStr] = text.split(':');
+      let h = parseInt(hStr);
+      if (!isNaN(h) && h > 12) {
+        setTime(`${(h - 12).toString().padStart(2, '0')}:${mStr || ''}`);
+        setPeriod('PM');
+      } else if (!isNaN(h) && h === 0) {
+        setTime(`12:${mStr || ''}`);
+        setPeriod('AM');
+      }
+    }
+  };
   
   const [questions, setQuestions] = useState([
     { question: '', options: ['', '', '', ''], correct: 'A', explanation: '' }
@@ -565,7 +580,12 @@ const AdminMCQReview = ({ navigation }) => {
                   <View style={{ flex: 2 }}>
                     <Text style={s.subLabel}>Start Time</Text>
                     <View style={s.timeInputContainer}>
-                      <TextInput style={[s.input, { flex: 1 }]} value={startTime} onChangeText={setStartTime} placeholder="12:00" />
+                      <TextInput 
+                        style={[s.input, { flex: 1 }]} 
+                        value={startTime} 
+                        onChangeText={(t) => format12h(t, setStartTime, setStartPeriod)} 
+                        placeholder="12:00" 
+                      />
                       <View style={s.periodToggle}>
                         <TouchableOpacity 
                           style={[s.periodBtn, startPeriod === 'AM' && s.periodBtnActive]} 
