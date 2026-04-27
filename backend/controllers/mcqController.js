@@ -9,30 +9,35 @@ exports.getTodaysMCQs = async (req, res) => {
   try {
     const redisClient = req.app.get('getRedis')();
     const cacheKey = 'todays_mcqs';
-
-    // 1. Check Redis Cache
+    let mcqs;
+    // 1. Try Redis Cache for the base mission data
     if (redisClient) {
       const cachedData = await redisClient.get(cacheKey);
       if (cachedData) {
-        console.log('🚀 Redis: Serving Cached MCQs');
-        return res.json(JSON.parse(cachedData));
+        console.log('🚀 Redis: Serving Cached Mission Base');
+        mcqs = JSON.parse(cachedData);
       }
     }
 
-    const now = new Date();
-    const today = new Date().toLocaleDateString('en-CA');
-    // Look for the most recent ACTIVE mission for today
-    const mcqs = await DailyMCQ.findOne({ 
-      date: today,
-      status: 'ACTIVE' 
-    }).sort({ startTime: -1 });
+    if (!mcqs) {
+      const today = new Date().toLocaleDateString('en-CA');
+      const mission = await DailyMCQ.findOne({ 
+        date: today,
+        status: 'ACTIVE' 
+      }).sort({ startTime: -1 });
 
-    if (!mcqs) return res.status(404).json({ message: 'No questions scheduled' });
+      if (!mission) return res.status(404).json({ message: 'No questions scheduled' });
+      mcqs = mission.toObject();
+
+      // Save to cache for 5 minutes
+      if (redisClient) {
+        await redisClient.setEx(cacheKey, 300, JSON.stringify(mcqs));
+      }
+    }
 
     const startTime = new Date(mcqs.startTime);
     const endTime = new Date(mcqs.endTime);
-
-    const result = { ...mcqs.toObject() };
+    const result = { ...mcqs };
 
     // Check if THIS user has already attempted this mission
     const userId = req.session.userId;
@@ -80,26 +85,47 @@ exports.getTodaysMCQs = async (req, res) => {
  */
 exports.createManualMCQs = async (req, res) => {
   try {
-    const { subject, questions } = req.body;
-    const today = new Date().toISOString().split('T')[0];
+    const { subject, questions, startTime, endTime, testDuration, timePerQuestion, date } = req.body;
+    const cleanDate = date || new Date().toISOString().split('T')[0];
 
-    // Check if a set already exists for today
-    let mcqSet = await DailyMCQ.findOne({ date: today });
+    // Check if we are updating an existing set or creating a new one
+    let mcqSet;
+    if (req.body.id) {
+      mcqSet = await DailyMCQ.findById(req.body.id);
+    } else {
+      // Find if one already exists for this date to avoid duplicates
+      mcqSet = await DailyMCQ.findOne({ date: cleanDate });
+    }
     
     if (mcqSet) {
       mcqSet.subject = subject;
       mcqSet.questions = questions;
-      mcqSet.status = 'ACTIVE'; // Manual ones are active immediately
+      mcqSet.startTime = startTime;
+      mcqSet.endTime = endTime;
+      mcqSet.testDuration = testDuration;
+      mcqSet.timePerQuestion = timePerQuestion;
+      mcqSet.status = 'ACTIVE';
     } else {
       mcqSet = new DailyMCQ({
-        date: today,
+        date: cleanDate,
         subject,
         questions,
+        startTime,
+        endTime,
+        testDuration,
+        timePerQuestion,
         status: 'ACTIVE'
       });
     }
 
     await mcqSet.save();
+
+    // Clear Redis Cache so students see it immediately
+    const redisClient = req.app.get('getRedis')();
+    if (redisClient) {
+      await redisClient.del('todays_mcqs');
+    }
+
     res.json({ message: 'Manual MCQs posted successfully!', data: mcqSet });
   } catch (error) {
     res.status(500).json({ message: error.message });

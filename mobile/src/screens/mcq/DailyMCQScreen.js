@@ -132,6 +132,14 @@ const DailyMCQScreen = ({ navigation }) => {
       const data = res.data;
       setHistory(data.history || []);
       
+      // 1. If already attempted, skip straight to results review! (Priority #1)
+      if (data.isAttempted) {
+        setIsFinished(true);
+        setLoading(false);
+        return;
+      }
+
+      // 2. If not attempted, check timing
       if (data.isTooEarly) {
         setTestId(data._id);
         // Map the correct fields for the dashboard display
@@ -141,14 +149,8 @@ const DailyMCQScreen = ({ navigation }) => {
         } ]); 
         return setIsTooEarly(true);
       }
-      if (data.isTooLate) return setIsTooLate(true);
       
-      // If already attempted, skip straight to results!
-      if (data.isAttempted) {
-        setIsFinished(true);
-        setLoading(false);
-        return;
-      }
+      if (data.isTooLate) return setIsTooLate(true);
       
       if (!data.questions || data.questions.length === 0) {
         Alert.alert('Not Ready', 'Questions are being prepared.');
@@ -232,15 +234,23 @@ const DailyMCQScreen = ({ navigation }) => {
     </SafeAreaView>
   );
 
-  if (isTooEarly) return (
+  if (isTooEarly || isTooLate) return (
     <SafeAreaView style={s.container}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
-        <View style={s.upcomingHero}>
-          <Clock color={theme.colors.primary} size={32} />
+        <View style={[s.upcomingHero, isTooLate && { borderColor: theme.colors.error, backgroundColor: `${theme.colors.error}10` }]}>
+          {isTooLate ? (
+            <AlertTriangle color={theme.colors.error} size={32} />
+          ) : (
+            <Clock color={theme.colors.primary} size={32} />
+          )}
           <View style={{ flex: 1 }}>
-            <Text style={s.upcomingLabel}>UPCOMING MISSION</Text>
+            <Text style={[s.upcomingLabel, isTooLate && { color: theme.colors.error }]}>
+              {isTooLate ? 'MISSION CLOSED' : 'UPCOMING MISSION'}
+            </Text>
             <Text style={s.upcomingSubject}>{mcqs[0]?.question || 'Daily Challenge'}</Text>
-            <Text style={s.upcomingTime}>Starts at {mcqs[0]?.startTime ? new Date(mcqs[0].startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}</Text>
+            <Text style={s.upcomingTime}>
+              {isTooLate ? 'The window for this mission has ended.' : `Starts at ${mcqs[0]?.startTime ? new Date(mcqs[0].startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}`}
+            </Text>
           </View>
         </View>
 
@@ -272,16 +282,6 @@ const DailyMCQScreen = ({ navigation }) => {
           ))
         )}
       </ScrollView>
-    </SafeAreaView>
-  );
-
-  if (isTooLate) return (
-    <SafeAreaView style={s.container}>
-      <View style={s.emptyState}>
-        <AlertTriangle color={theme.colors.error} size={48} />
-        <Text style={s.emptyTitle}>Window Closed</Text>
-        <Text style={s.emptySub}>Mission has already ended.</Text>
-      </View>
     </SafeAreaView>
   );
 
