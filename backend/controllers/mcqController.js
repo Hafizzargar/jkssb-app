@@ -23,7 +23,7 @@ exports.getTodaysMCQs = async (req, res) => {
       const today = new Date().toLocaleDateString('en-CA');
       const mission = await DailyMCQ.findOne({ 
         date: today,
-        status: 'ACTIVE' 
+        status: { $in: ['ACTIVE', 'PENDING'] }
       }).sort({ startTime: -1 });
 
       if (!mission) return res.status(404).json({ message: 'No questions scheduled' });
