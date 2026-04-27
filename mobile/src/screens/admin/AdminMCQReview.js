@@ -195,21 +195,22 @@ const AdminMCQReview = ({ navigation }) => {
     const cleanEnd = normalizeTime(endTime, endPeriod);
 
     const startObj = new Date(`${cleanDate}T${cleanStart}:00`);
-    const endObj = new Date(`${cleanDate}T${cleanEnd}:00`);
+    let endObj = new Date(`${cleanDate}T${cleanEnd}:00`);
     const now = new Date();
 
+    // Smart Midnight Correction: If end time is numerically before start time, 
+    // it means the mission ends the next day.
+    if (endObj <= startObj) {
+      endObj.setDate(endObj.getDate() + 1);
+    }
+
     if (isNaN(startObj.getTime()) || isNaN(endObj.getTime())) {
-      toast('Invalid Date or Time. Use YYYY-MM-DD (e.g. 2026-04-27) and HH:mm (e.g. 14:30)', 'error');
+      toast('Invalid Date or Time format.', 'error');
       return;
     }
 
     if (startObj < now) {
       toast('Mission start time cannot be in the past.', 'error');
-      return;
-    }
-
-    if (endObj <= startObj) {
-      toast('End time must be after Start time', 'error');
       return;
     }
 
