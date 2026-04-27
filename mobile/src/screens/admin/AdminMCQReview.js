@@ -31,6 +31,8 @@ const AdminMCQReview = ({ navigation }) => {
   const [testDate, setTestDate] = useState(new Date().toLocaleDateString('en-CA'));
   const [startTime, setStartTime] = useState('12:00');
   const [endTime, setEndTime] = useState('12:05');
+  const [startPeriod, setStartPeriod] = useState('PM'); // AM | PM
+  const [endPeriod, setEndPeriod] = useState('PM'); // AM | PM
   
   const [questions, setQuestions] = useState([
     { question: '', options: ['', '', '', ''], correct: 'A', explanation: '' }
@@ -50,15 +52,28 @@ const AdminMCQReview = ({ navigation }) => {
 
     if (startTime && mins > 0) {
       try {
-        const [h, m] = startTime.split(':').map(Number);
+        let [h, m] = startTime.split(':').map(Number);
+        
+        // Convert to 24h for calculation
+        if (startPeriod === 'PM' && h < 12) h += 12;
+        if (startPeriod === 'AM' && h === 12) h = 0;
+
         const date = new Date();
         date.setHours(h, m + mins);
-        const endH = date.getHours().toString().padStart(2, '0');
-        const endM = date.getMinutes().toString().padStart(2, '0');
-        setEndTime(`${endH}:${endM}`);
+        
+        let endH = date.getHours();
+        let endM = date.getMinutes().toString().padStart(2, '0');
+        
+        // Convert back to 12h for UI
+        const period = endH >= 12 ? 'PM' : 'AM';
+        endH = endH % 12;
+        if (endH === 0) endH = 12;
+        
+        setEndTime(`${endH.toString().padStart(2, '0')}:${endM}`);
+        setEndPeriod(period);
       } catch (e) {}
     }
-  }, [totalMinutes, secondsPerQ, startTime]);
+  }, [totalMinutes, secondsPerQ, startTime, startPeriod]);
 
   useEffect(() => {
     if (questionsNeeded > 0) {
@@ -148,15 +163,21 @@ const AdminMCQReview = ({ navigation }) => {
       return [parts[0], parts[1].padStart(2, '0'), parts[2].padStart(2, '0')].join('-');
     };
 
-    const normalizeTime = (t) => {
+    const normalizeTime = (t, period) => {
       const parts = t.trim().split(':');
       if (parts.length !== 2) return t;
-      return [parts[0].padStart(2, '0'), parts[1].padStart(2, '0')].join(':');
+      let h = parseInt(parts[0]);
+      let m = parts[1].padStart(2, '0');
+      
+      if (period === 'PM' && h < 12) h += 12;
+      if (period === 'AM' && h === 12) h = 0;
+      
+      return [h.toString().padStart(2, '0'), m].join(':');
     };
 
     const cleanDate = normalizeDate(testDate);
-    const cleanStart = normalizeTime(startTime);
-    const cleanEnd = normalizeTime(endTime);
+    const cleanStart = normalizeTime(startTime, startPeriod);
+    const cleanEnd = normalizeTime(endTime, endPeriod);
 
     const startObj = new Date(`${cleanDate}T${cleanStart}:00`);
     const endObj = new Date(`${cleanDate}T${cleanEnd}:00`);
@@ -541,13 +562,41 @@ const AdminMCQReview = ({ navigation }) => {
                     <Text style={s.subLabel}>Date</Text>
                     <TextInput style={s.input} value={testDate} onChangeText={setTestDate} />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.subLabel}>Start</Text>
-                    <TextInput style={s.input} value={startTime} onChangeText={setStartTime} />
+                  <View style={{ flex: 2 }}>
+                    <Text style={s.subLabel}>Start Time</Text>
+                    <View style={s.timeInputContainer}>
+                      <TextInput style={[s.input, { flex: 1 }]} value={startTime} onChangeText={setStartTime} placeholder="12:00" />
+                      <View style={s.periodToggle}>
+                        <TouchableOpacity 
+                          style={[s.periodBtn, startPeriod === 'AM' && s.periodBtnActive]} 
+                          onPress={() => setStartPeriod('AM')}
+                        >
+                          <Text style={[s.periodBtnText, startPeriod === 'AM' && s.periodBtnTextActive]}>AM</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={[s.periodBtn, startPeriod === 'PM' && s.periodBtnActive]} 
+                          onPress={() => setStartPeriod('PM')}
+                        >
+                          <Text style={[s.periodBtnText, startPeriod === 'PM' && s.periodBtnTextActive]}>PM</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   </View>
+                </View>
+
+                <View style={s.timingRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.subLabel}>End (Auto)</Text>
-                    <TextInput style={[s.input, { backgroundColor: 'rgba(255,255,255,0.02)', color: theme.colors.primary }]} value={endTime} editable={false} />
+                    <Text style={s.subLabel}>End Time (Auto-calculated)</Text>
+                    <View style={s.timeInputContainer}>
+                      <TextInput 
+                        style={[s.input, { flex: 1, backgroundColor: 'rgba(255,255,255,0.02)', color: theme.colors.primary }]} 
+                        value={endTime} 
+                        editable={false} 
+                      />
+                      <View style={[s.periodBtn, s.periodBtnActive, { paddingHorizontal: 16 }]}>
+                        <Text style={s.periodBtnTextActive}>{endPeriod}</Text>
+                      </View>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -749,7 +798,13 @@ const styles = (theme) => StyleSheet.create({
   correctBtn: { flex: 1, height: 44, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border },
   correctBtnActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
   correctBtnText: { color: theme.colors.textMuted, fontWeight: 'bold' },
-  correctBtnTextActive: { color: '#000' }
+  correctBtnTextActive: { color: '#000' },
+  timeInputContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  periodToggle: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: 2 },
+  periodBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  periodBtnActive: { backgroundColor: theme.colors.primary },
+  periodBtnText: { color: theme.colors.textMuted, fontSize: 12, fontWeight: 'bold' },
+  periodBtnTextActive: { color: '#000' }
 });
 
 export default AdminMCQReview;

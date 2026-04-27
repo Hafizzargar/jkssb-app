@@ -41,11 +41,23 @@ exports.getTodaysMCQs = async (req, res) => {
       const attempt = await MCQAttempt.findOne({ user: userId, dailyMCQ: mcqs._id });
       result.isAttempted = !!attempt;
 
-      // Fetch user history (last 5 attempts)
-      history = await MCQAttempt.find({ user: userId })
+      // Fetch user history (last 5 attempts) and calculate rank for each
+      const rawHistory = await MCQAttempt.find({ user: userId })
         .sort({ attemptedAt: -1 })
         .limit(5)
-        .select('score subjectCode attemptedAt');
+        .select('score subjectCode dailyMCQ attemptedAt');
+
+      history = await Promise.all(rawHistory.map(async (item) => {
+        // Find how many people scored HIGHER in the same mission to calculate rank
+        const higherScorers = await MCQAttempt.countDocuments({
+          dailyMCQ: item.dailyMCQ,
+          score: { $gt: item.score }
+        });
+        return {
+          ...item.toObject(),
+          rank: higherScorers + 1
+        };
+      }));
     }
 
     // Always include these flags so the frontend knows how to handle the UI

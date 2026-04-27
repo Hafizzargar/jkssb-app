@@ -66,7 +66,25 @@ const DailyMCQScreen = ({ navigation }) => {
       subscription.remove();
       stopAllTimers();
     };
-  }, [mcqs, isFinished]);
+  }, [isFinished]); // Removed mcqs to prevent infinite loop
+
+  // Effect to automatically start the mission if we are on the "Too Early" dashboard
+  useEffect(() => {
+    if (!isTooEarly || !mcqs[0]?.startTime) return;
+
+    const start = new Date(mcqs[0].startTime);
+    const checkTimer = setInterval(() => {
+      const now = new Date();
+      if (now >= start) {
+        clearInterval(checkTimer);
+        setIsTooEarly(false);
+        setLoading(true);
+        checkTimingAndFetch(); // Final check to launch
+      }
+    }, 1000);
+
+    return () => clearInterval(checkTimer);
+  }, [isTooEarly, mcqs]);
 
   useEffect(() => {
     if (mcqs.length > 0 && !isFinished && !loading) {
@@ -116,7 +134,11 @@ const DailyMCQScreen = ({ navigation }) => {
       
       if (data.isTooEarly) {
         setTestId(data._id);
-        setMcqs([ { question: data.subject, startTime: data.startTime } ]);
+        // Map the correct fields for the dashboard display
+        setMcqs([ { 
+          question: data.subject, 
+          startTime: data.opensAt || data.startTime 
+        } ]); 
         return setIsTooEarly(true);
       }
       if (data.isTooLate) return setIsTooLate(true);
@@ -236,9 +258,15 @@ const DailyMCQScreen = ({ navigation }) => {
                 <Text style={s.historySubject}>{item.subjectCode}</Text>
                 <Text style={s.historyDate}>{new Date(item.attemptedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
               </View>
-              <View style={s.historyScoreBox}>
-                <Text style={s.historyScoreLabel}>SCORE</Text>
-                <Text style={s.historyScoreValue}>{item.score}</Text>
+              <View style={s.historyStatsRow}>
+                <View style={s.historyStatItem}>
+                  <Text style={s.historyScoreLabel}>SCORE</Text>
+                  <Text style={s.historyScoreValue}>{item.score}</Text>
+                </View>
+                <View style={[s.historyStatItem, { borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.05)', paddingLeft: 12 }]}>
+                  <Text style={s.historyScoreLabel}>RANK</Text>
+                  <Text style={[s.historyScoreValue, { color: theme.colors.text }]}>#{item.rank || '--'}</Text>
+                </View>
               </View>
             </View>
           ))
@@ -477,9 +505,10 @@ const styles = (theme) => StyleSheet.create({
   },
   historySubject: { color: theme.colors.text, fontSize: 16, fontWeight: 'bold' },
   historyDate: { color: theme.colors.textMuted, fontSize: 12, marginTop: 2 },
-  historyScoreBox: { alignItems: 'center', paddingLeft: 16, borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.05)' },
+  historyStatsRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  historyStatItem: { alignItems: 'center' },
   historyScoreLabel: { color: theme.colors.textMuted, fontSize: 8, fontWeight: '900', marginBottom: 2 },
-  historyScoreValue: { color: theme.colors.primary, fontSize: 20, fontWeight: '900' },
+  historyScoreValue: { color: theme.colors.primary, fontSize: 18, fontWeight: '900' },
   emptyHistory: { alignItems: 'center', marginTop: 40, opacity: 0.5 },
   emptyHistoryText: { color: theme.colors.textMuted, fontSize: 14, textAlign: 'center', marginTop: 12 }
 });
