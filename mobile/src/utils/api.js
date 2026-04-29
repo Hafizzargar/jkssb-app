@@ -7,11 +7,18 @@ import Constants from 'expo-constants';
  * This client automatically resolves the backend address based on your environment.
  */
 
+// 🚀 PRODUCTION BACKEND URL (Change this once deployed on Render)
+const PRODUCTION_URL = 'https://your-app-name.onrender.com/api';
+
 const getBaseUrl = () => {
   // 1. Check for manually set override in env (if you have one)
   if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
 
-  // 2. Web is easy
+  // 2. Use Production URL if you are building a release version (APK)
+  // You can also manually uncomment the line below to force production mode
+  // return PRODUCTION_URL;
+
+  // 3. Web is easy
   if (Platform.OS === 'web') return 'http://localhost:5000/api';
 
   // 3. Dynamic IP Discovery for Expo (Works for Real Device & Emulator)

@@ -63,10 +63,10 @@ app.use(session({
     ttl: 14 * 24 * 60 * 60 // 14 days
   }),
   cookie: {
-    secure: false, // Must be false for local HTTP
+    secure: process.env.NODE_ENV === 'production', 
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    sameSite: 'lax', // Needed for cross-port localhost
+    maxAge: 30 * 24 * 60 * 60 * 1000, // Increase to 30 days for mobile convenience
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
   }
 }));
 
