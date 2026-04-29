@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Dimensions, ScrollView, Animated, StatusBar, ActivityIndicator } from 'react-native';
-import { Mail, User, Phone, AtSign, ArrowRight, CheckSquare, Square, Lock, Eye, EyeOff } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Dimensions, ScrollView, Animated, StatusBar, ActivityIndicator } from 'react-native';
+import { Mail, User, Phone, AtSign, CheckSquare, Shield } from 'lucide-react-native';
 import { useDispatch } from 'react-redux';
 import { loginSuccess } from '../../redux/authSlice';
 import { useTheme } from '../../utils/useTheme';
-import { spacing, borderRadius } from '../../theme';
-import client from '../../api/client';
+import { spacing } from '../../theme';
+import api from '../../utils/api';
 import { toast } from '../../components/Toast';
+import Input from '../../components/Input';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 const isLargeScreen = width > 768;
 
 const RegisterScreen = ({ navigation }) => {
@@ -22,9 +23,7 @@ const RegisterScreen = ({ navigation }) => {
     password: '',
     isTermsAccepted: false
   });
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [focusedField, setFocusedField] = useState(null);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -66,13 +65,11 @@ const RegisterScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      const res = await client.post('/auth/register', form);
-      // Dispatch login success to update global state
+      const res = await api.post('/auth/register', form);
       dispatch(loginSuccess({ user: res.data.user }));
       
       toast('Welcome! Registration successful.', 'success');
       
-      // Navigate to Home with a "isNewUser" flag to trigger the invite
       navigation.reset({
         index: 0,
         routes: [{ name: 'Main', params: { isNewUser: true } }],
@@ -86,66 +83,84 @@ const RegisterScreen = ({ navigation }) => {
 
   const s = styles(theme);
 
-  const renderInput = (icon, placeholder, key, keyboardType = 'default', isPassword = false) => (
-    <View style={[
-      s.inputWrapper,
-      focusedField === key && { borderColor: theme.colors.primary, backgroundColor: theme.colors.background }
-    ]}>
-      {React.cloneElement(icon, { 
-        color: focusedField === key ? theme.colors.primary : theme.colors.textMuted,
-        size: 20,
-        style: s.icon
-      })}
-      <TextInput
-        style={s.input}
-        placeholder={placeholder}
-        placeholderTextColor={theme.colors.textMuted}
-        keyboardType={keyboardType}
-        secureTextEntry={isPassword && !showPassword}
-        autoCapitalize={key === 'email' || key === 'username' ? 'none' : 'sentences'}
-        value={form[key]}
-        onChangeText={(v) => setForm({...form, [key]: v})}
-        onFocus={() => setFocusedField(key)}
-        onBlur={() => setFocusedField(null)}
-      />
-      {isPassword && (
-        <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={s.eyeIcon}>
-          {showPassword ? <EyeOff color={theme.colors.textMuted} size={20} /> : <Eye color={theme.colors.textMuted} size={20} />}
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
   return (
     <SafeAreaView style={s.container}>
       <StatusBar barStyle={theme.name === 'Dark Mode' ? 'light-content' : 'dark-content'} />
-      <View style={s.backgroundDecorator} />
-
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.flex}>
         <ScrollView contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
           <Animated.View style={[s.innerContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-            <Text style={s.title}>Create Account</Text>
-            <Text style={s.subtitle}>Start your journey with JKSSB PrepMaster</Text>
+            
+            <View style={s.header}>
+              <View style={s.logoBox}>
+                <Shield color="#FFFFFF" size={28} strokeWidth={2.5} />
+              </View>
+              <Text style={s.brandName}>AdaptLearn-JKSSB</Text>
+              <Text style={s.brandSlogan}>your ultimate prep partner</Text>
+            </View>
+
+            <View style={s.tabContainer}>
+              <TouchableOpacity style={s.tab} onPress={() => navigation.navigate('Login')}>
+                <Text style={s.tabTextInactive}>Sign in</Text>
+              </TouchableOpacity>
+              <View style={[s.tab, s.tabActive]}>
+                <Text style={s.tabTextActive}>Create account</Text>
+              </View>
+            </View>
 
             <View style={s.form}>
-              {renderInput(<User />, "Full Name", "name")}
-              {renderInput(<AtSign />, "Username", "username")}
-              {renderInput(<Phone />, "Phone Number", "phone", "phone-pad")}
-              {renderInput(<Mail />, "Email Address", "email", "email-address")}
-              {renderInput(<Lock />, "Password", "password", "default", true)}
+              <Input 
+                label="FULL NAME"
+                placeholder="Alex Morgan"
+                icon={User}
+                value={form.name}
+                onChangeText={(v) => setForm({...form, name: v})}
+              />
+
+              <Input 
+                label="USERNAME"
+                placeholder="alexmorg"
+                icon={AtSign}
+                autoCapitalize="none"
+                value={form.username}
+                onChangeText={(v) => setForm({...form, username: v})}
+              />
+
+              <Input 
+                label="PHONE NUMBER"
+                placeholder="9876543210"
+                icon={Phone}
+                keyboardType="phone-pad"
+                value={form.phone}
+                onChangeText={(v) => setForm({...form, phone: v})}
+              />
+
+              <Input 
+                label="WORK EMAIL"
+                placeholder="alex@company.com"
+                icon={Mail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={form.email}
+                onChangeText={(v) => setForm({...form, email: v})}
+              />
+
+              <Input 
+                label="PASSWORD"
+                placeholder="••••••••"
+                secureTextEntry
+                value={form.password}
+                onChangeText={(v) => setForm({...form, password: v})}
+              />
 
               <TouchableOpacity 
                 style={s.termsRow}
                 onPress={() => setForm({...form, isTermsAccepted: !form.isTermsAccepted})}
                 activeOpacity={0.7}
               >
-                <View style={s.checkbox}>
-                  {form.isTermsAccepted ? 
-                    <CheckSquare color={theme.colors.primary} size={24} /> : 
-                    <Square color={theme.colors.textMuted} size={24} />
-                  }
+                <View style={[s.checkbox, form.isTermsAccepted && s.checkboxActive]}>
+                  {form.isTermsAccepted && <CheckSquare color="#FFFFFF" size={18} />}
                 </View>
-                <Text style={s.termsText}>I am above 18 years old and agree to the <Text style={s.linkUnderline}>Terms & Conditions</Text></Text>
+                <Text style={s.termsText}>I agree to the <Text style={s.linkUnderline}>Terms</Text> and <Text style={s.linkUnderline}>Privacy Policy</Text></Text>
               </TouchableOpacity>
 
               <TouchableOpacity 
@@ -155,12 +170,9 @@ const RegisterScreen = ({ navigation }) => {
                 disabled={loading}
               >
                 {loading ? (
-                  <ActivityIndicator color="#000" />
+                  <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <>
-                    <Text style={s.buttonText}>Register Now</Text>
-                    <ArrowRight color="#000" size={20} strokeWidth={3} />
-                  </>
+                  <Text style={s.buttonText}>Create account</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -168,7 +180,7 @@ const RegisterScreen = ({ navigation }) => {
             <View style={s.footerContainer}>
               <Text style={s.footerText}>Already have an account?</Text>
               <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                <Text style={s.link}> Login</Text>
+                <Text style={s.link}> Sign in</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -181,40 +193,29 @@ const RegisterScreen = ({ navigation }) => {
 const styles = (theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   flex: { flex: 1 },
-  backgroundDecorator: { position: 'absolute', top: -height * 0.05, left: -width * 0.1, width: width * 0.6, height: width * 0.6, borderRadius: width * 0.3, backgroundColor: theme.colors.primary, opacity: 0.03, zIndex: 0 },
-  scrollContent: { padding: spacing.xl, alignItems: 'center', width: isLargeScreen ? 500 : '100%', alignSelf: 'center', paddingBottom: 60 },
+  scrollContent: { padding: spacing.xl, alignItems: 'center', width: isLargeScreen ? 360 : '100%', maxWidth: 400, alignSelf: 'center', paddingBottom: 60, paddingTop: 60 },
   innerContent: { width: '100%', alignItems: 'center' },
-  title: { color: theme.colors.text, fontSize: 34, fontWeight: '800', marginBottom: spacing.xs, marginTop: 20, letterSpacing: -0.5 },
-  subtitle: { color: theme.colors.textMuted, fontSize: 16, marginBottom: 40, textAlign: 'center' },
+  header: { alignItems: 'center', marginBottom: 40 },
+  logoBox: { width: 56, height: 56, borderRadius: 16, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  brandName: { fontSize: 24, fontWeight: 'bold', color: theme.colors.text, marginBottom: 2 },
+  brandSlogan: { fontSize: 13, color: theme.colors.textMuted },
+  tabContainer: { flexDirection: 'row', width: '100%', marginBottom: 30, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+  tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: theme.colors.primary },
+  tabTextInactive: { color: theme.colors.textMuted, fontSize: 15, fontWeight: '600' },
+  tabTextActive: { color: theme.colors.primary, fontSize: 15, fontWeight: '600' },
   form: { width: '100%' },
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.surface, borderRadius: borderRadius.lg, paddingHorizontal: spacing.md, height: 64, marginBottom: spacing.md, borderWidth: 1.5, borderColor: theme.colors.border },
-  icon: { marginRight: spacing.sm },
-  input: { flex: 1, color: theme.colors.text, fontSize: 16, fontWeight: '500' },
-  eyeIcon: { padding: 8 },
-  termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, marginBottom: spacing.xl, paddingRight: 10 },
-  checkbox: { marginRight: 12 },
-  termsText: { color: theme.colors.textMuted, fontSize: 14, lineHeight: 20, flex: 1 },
-  linkUnderline: { textDecorationLine: 'underline', color: theme.colors.text },
-  button: { 
-    backgroundColor: theme.colors.primary, 
-    height: 64, 
-    borderRadius: borderRadius.lg, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 10, 
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-    elevation: 5 
-  },
-  buttonDisabled: { opacity: 0.4 },
-  buttonText: { color: '#000', fontSize: 17, fontWeight: '700' },
-  footerContainer: { flexDirection: 'row', marginTop: 40, alignItems: 'center' },
-  footerText: { color: theme.colors.textMuted, fontSize: 15 },
-  link: { color: theme.colors.primary, fontWeight: 'bold', fontSize: 15 }
+  termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, marginBottom: 30 },
+  checkbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: theme.colors.textMuted, marginRight: 12, alignItems: 'center', justifyContent: 'center' },
+  checkboxActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  termsText: { color: theme.colors.textMuted, fontSize: 13, lineHeight: 18, flex: 1 },
+  linkUnderline: { color: theme.colors.primary },
+  button: { backgroundColor: theme.colors.primary, height: 56, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  buttonDisabled: { opacity: 0.7 },
+  buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  footerContainer: { flexDirection: 'row', marginTop: 30, alignItems: 'center' },
+  footerText: { color: theme.colors.textMuted, fontSize: 14 },
+  link: { color: theme.colors.primary, fontWeight: 'bold', fontSize: 14 }
 });
 
 export default RegisterScreen;

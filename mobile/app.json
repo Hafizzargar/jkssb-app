@@ -26,6 +26,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+        "expo-notifications",
         [
           "expo-splash-screen",
         {
@@ -39,6 +40,10 @@
         }
       ]
     ],
+    "notification": {
+      "icon": "./assets/images/notification-icon.png",
+      "color": "#FF231F7C"
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

@@ -72,9 +72,7 @@ app.use(session({
 
 // Add a debug middleware to track session issues
 app.use((req, res, next) => {
-  if (req.path.startsWith('/api/admin')) {
-    console.log(`🔐 Admin Request: ${req.path} | SessionID: ${req.sessionID} | Auth: ${req.session.isAuth}`);
-  }
+  console.log(`🌐 [REQUEST] ${req.method} ${req.path} | Auth: ${req.session?.isAuth} | UID: ${req.session?.userId}`);
   next();
 });
 
@@ -86,6 +84,7 @@ app.use('/api/admin/mcq', require('./routes/admin/adminMCQ'));
 app.use('/api/admin/blog', require('./routes/admin/adminBlog'));
 app.use('/api/admin/prize', require('./routes/admin/adminPrize'));
 app.use('/api/admin/subject', require('./routes/admin/adminSubject'));
+app.use('/api/admin/stats', require('./routes/admin/adminStats'));
 app.use('/api/blogs', require('./routes/blog'));
 
 app.get('/', (req, res) => {
@@ -96,6 +95,9 @@ const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('🚀 Connected to MongoDB');
+    const { initScheduler } = require('./services/SchedulerService');
+    initScheduler();
+
     app.listen(PORT, () => {
       console.log(`📡 Server running on port ${PORT}`);
     });

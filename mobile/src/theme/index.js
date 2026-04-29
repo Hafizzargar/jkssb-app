@@ -2,14 +2,15 @@ export const themes = {
   dark: {
     name: 'Dark Mode',
     colors: {
-      primary: '#fbbf24', // Subtle Amber
-      secondary: '#d97706',
-      background: '#0f172a', // Deep Slate/Blue
-      surface: '#1e293b', // Lighter Slate
-      text: '#f8fafc',
-      textMuted: '#94a3b8',
-      border: 'rgba(255,255,255,0.06)',
-      card: '#1e293b',
+      primary: '#635BFF', // Modern Indigo/Purple
+      secondary: '#4A42DB',
+      background: '#13131A', // Very dark slate/purple
+      surface: '#1C1C26', // Lighter dark shade for cards
+      text: '#FFFFFF',
+      textMuted: '#8E8E9F',
+      placeholder: '#4B4B5E', // Distinctly darker than text and muted text
+      border: 'rgba(255,255,255,0.08)',
+      card: '#1C1C26',
       error: '#ef4444',
       success: '#22c55e',
     }

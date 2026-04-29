@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const blogSchema = new mongoose.Schema({
   title:      { type: String, required: true },
   content:    { type: String, required: true },
-  category:   { type: String, enum: ['J&K', 'INDIA', 'WORLD', 'OFFICIAL'], default: 'J&K' },
+  category:   { type: String, enum: ['JKSSB', 'NEET', 'JEE', 'UPSC', 'BANKING', 'GENERAL', 'J&K', 'INDIA', 'WORLD', 'OFFICIAL'], default: 'JKSSB' },
   image:      String,
   author:     { type: String, default: 'PrepMaster AI' },
   isPublished: { type: Boolean, default: false },

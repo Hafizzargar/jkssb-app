@@ -20,10 +20,10 @@ exports.getTodaysMCQs = async (req, res) => {
     }
 
     if (!mcqs) {
-      const today = new Date().toLocaleDateString('en-CA');
+      const today = new Date().toISOString().split('T')[0];
       const mission = await DailyMCQ.findOne({ 
         date: today,
-        status: { $in: ['ACTIVE', 'PENDING'] }
+        status: { $in: ['ACTIVE', 'PENDING', 'PUBLISHED'] }
       }).sort({ startTime: -1 });
 
       if (!mission) return res.status(404).json({ message: 'No questions scheduled' });
@@ -66,8 +66,9 @@ exports.getTodaysMCQs = async (req, res) => {
     }
 
     // Always include these flags so the frontend knows how to handle the UI
-    // Added 15-second grace period (15000ms) to match frontend auto-start UI
-    result.isTooEarly = now < new Date(startTime.getTime() - 15000); 
+    // Added 2-minute grace period (120000ms) to allow early entry
+    const now = new Date();
+    result.isTooEarly = now < new Date(startTime.getTime() - 120000); 
     result.isTooLate = now > endTime;
     result.opensAt = startTime;
     result.closedAt = endTime;
@@ -88,6 +89,18 @@ exports.createManualMCQs = async (req, res) => {
     const { subject, questions, startTime, endTime, testDuration, timePerQuestion, date } = req.body;
     const cleanDate = date || new Date().toISOString().split('T')[0];
 
+    const validQuestions = (questions || [])
+      .filter(q => q.question && q.question.trim() !== '')
+      .map(q => ({
+        question: q.question.trim(),
+        options: q.options.map(o => (o || '').trim()),
+        correct: q.correct || 'A',
+        explanation: q.explanation || ''
+      }))
+      .filter(q => q.options.filter(o => o !== '').length === 4);
+
+    console.log(`📝 [mcqController] Saving ${validQuestions.length} valid questions out of ${(questions || []).length} submitted.`);
+
     // Check if we are updating an existing set or creating a new one
     let mcqSet;
     if (req.body.id) {
@@ -99,7 +112,7 @@ exports.createManualMCQs = async (req, res) => {
     
     if (mcqSet) {
       mcqSet.subject = subject;
-      mcqSet.questions = questions;
+      mcqSet.questions = validQuestions;
       mcqSet.startTime = startTime;
       mcqSet.endTime = endTime;
       mcqSet.testDuration = testDuration;
@@ -109,7 +122,7 @@ exports.createManualMCQs = async (req, res) => {
       mcqSet = new DailyMCQ({
         date: cleanDate,
         subject,
-        questions,
+        questions: validQuestions,
         startTime,
         endTime,
         testDuration,
@@ -260,7 +273,13 @@ exports.submitMCQs = async (req, res) => {
     }
     await user.save();
 
-    res.json({ message: 'Test submitted successfully. Results in 5 minutes.' });
+    // 5. Return the attempt (populated for immediate UI update)
+    const populatedAttempt = await MCQAttempt.findById(attempt._id).populate('dailyMCQ');
+
+    res.json({ 
+      message: 'Test submitted successfully!', 
+      attempt: populatedAttempt 
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -274,8 +293,14 @@ exports.getResults = async (req, res) => {
   try {
     const userId = req.session.userId;
     
-    // Find the latest attempt for this user and populate the mission questions
-    const attempt = await MCQAttempt.findOne({ user: userId })
+    const { missionId } = req.query;
+    
+    // Build query
+    const query = { user: userId };
+    if (missionId) query.dailyMCQ = missionId;
+
+    // Find the attempt (latest if no missionId) and populate questions
+    const attempt = await MCQAttempt.findOne(query)
       .sort({ attemptedAt: -1 })
       .populate('dailyMCQ');
 
@@ -287,5 +312,117 @@ exports.getResults = async (req, res) => {
   } catch (error) {
     console.error('Get Results Error:', error);
     res.status(500).json({ message: 'Server error fetching results.' });
+  }
+};
+
+/**
+ * Get all past, live, and upcoming MCQs for a student
+ * GET /api/mcq/all
+ */
+exports.getAllStudentMCQs = async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    const now = new Date();
+
+    // 1. Fetch all ACTIVE or PENDING missions
+    const allMissions = await DailyMCQ.find({ status: { $in: ['ACTIVE', 'PENDING', 'PUBLISHED'] } }).sort({ startTime: -1 });
+
+    // 2. Fetch all attempts by this user
+    const userAttempts = await MCQAttempt.find({ user: userId });
+    const attemptMap = {};
+    userAttempts.forEach(a => {
+      attemptMap[a.dailyMCQ.toString()] = {
+        score: a.score,
+        attemptedAt: a.attemptedAt,
+        correctAnswers: a.answers.filter(ans => ans.isCorrect).length,
+        totalQuestions: a.answers.length
+      };
+    });
+
+    const response = {
+      live: [],
+      upcoming: [],
+      past: []
+    };
+
+    allMissions.forEach(mission => {
+      const missionData = {
+        _id: mission._id,
+        subject: mission.subject,
+        startTime: mission.startTime,
+        endTime: mission.endTime,
+        questionCount: mission.questions.length,
+        isAttempted: !!attemptMap[mission._id.toString()],
+        scoreData: attemptMap[mission._id.toString()] || null
+      };
+
+      const start = new Date(mission.startTime);
+      const end = new Date(mission.endTime);
+      const twoMinsBeforeStart = new Date(start.getTime() - 120000);
+
+      if (now > end) {
+        response.past.push(missionData);
+      } else if (now >= twoMinsBeforeStart && now <= end) {
+        response.live.push(missionData);
+      } else {
+        response.upcoming.push(missionData);
+      }
+    });
+
+    res.json(response);
+  } catch (error) {
+    console.error('GetAllStudentMCQs Error:', error);
+    res.status(500).json({ message: 'Server error fetching all missions.' });
+  }
+};
+
+/**
+ * Get Leaderboard for a specific mission
+ * GET /api/mcq/leaderboard/:missionId
+ */
+exports.getLeaderboard = async (req, res) => {
+  try {
+    const { missionId } = req.params;
+    const userId = req.session.userId;
+
+    const mission = await DailyMCQ.findById(missionId).select('subject questions');
+    if (!mission) return res.status(404).json({ message: 'Mission not found' });
+
+    const allAttempts = await MCQAttempt.find({ dailyMCQ: missionId })
+      .populate('user', 'name')
+      .sort({ score: -1, attemptedAt: 1 });
+
+    const totalQuestions = mission.questions.length;
+    
+    // Process attempts to match the UI needs
+    const rankings = allAttempts.map((att, index) => {
+      const correct = att.answers.filter(a => a.isCorrect).length;
+      const wrong = att.answers.filter(a => !a.isCorrect && a.selectedOption !== 'NONE').length;
+      const percentage = Math.round((correct / totalQuestions) * 100);
+
+      return {
+        userId: att.user?._id,
+        name: att.user?.name || 'Anonymous',
+        score: att.score,
+        correct,
+        wrong,
+        percentage,
+        rank: index + 1
+      };
+    });
+
+    // Find current user's specific stats
+    const userStats = rankings.find(r => r.userId?.toString() === userId?.toString());
+
+    res.json({
+      subject: mission.subject,
+      totalParticipants: rankings.length,
+      top3: rankings.slice(0, 3),
+      allRankings: rankings,
+      userStats: userStats || null
+    });
+  } catch (error) {
+    console.error('GetLeaderboard Error:', error);
+    res.status(500).json({ message: 'Server error fetching leaderboard.' });
   }
 };

@@ -16,9 +16,10 @@ const dailyMCQSchema = new mongoose.Schema({
   }],
   status: { 
     type: String, 
-    enum: ['PENDING', 'ACTIVE', 'REJECTED', 'DELETED'], 
+    enum: ['PENDING', 'ACTIVE', 'PUBLISHED', 'REJECTED', 'DELETED'], 
     default: 'PENDING' 
   },
+  notified: { type: Boolean, default: false }, // For push notifications
   testDuration: { type: Number, default: 5 }, // Total minutes
   timePerQuestion: { type: Number, default: 15 }, // Seconds per question
   startTime: { type: Date, required: true }, // When test opens

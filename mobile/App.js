@@ -8,11 +8,17 @@ import * as SplashScreen from 'expo-splash-screen';
 import { themes } from './src/theme';
 import { ToastProvider } from './src/components/Toast';
 
+import { useNotifications } from './src/hooks/useNotifications';
+
 SplashScreen.preventAutoHideAsync();
 
 function MainApp() {
   const { theme } = useSelector((state) => state.settings);
+  const { user } = useSelector((state) => state.auth);
   const activeTheme = themes[theme] || themes.dark;
+
+  // Initialize Push Notifications
+  useNotifications(user?.id || user?._id);
 
   React.useEffect(() => {
     // Simulate loading

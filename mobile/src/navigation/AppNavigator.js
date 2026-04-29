@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text, Platform } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSelector } from 'react-redux';
@@ -13,9 +13,11 @@ import LockedOverlay from '../components/LockedOverlay';
 // Main Screens
 import HomeScreen from '../screens/home/HomeScreen';
 import DailyMCQScreen from '../screens/mcq/DailyMCQScreen';
+import MCQHubScreen from '../screens/mcq/MCQHubScreen';
 import LeaderboardScreen from '../screens/leaderboard/LeaderboardScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import BlogListScreen from '../screens/home/BlogListScreen';
+import BlogDetailScreen from '../screens/home/BlogDetailScreen';
 
 // Admin Screens
 import AdminDashboard from '../screens/admin/AdminDashboard';
@@ -44,14 +46,14 @@ const AdminStack = () => (
 const MainTabs = () => {
   const theme = useTheme();
   const { user } = useSelector((state) => state.auth);
-  const isMasterAdmin = user?.email === 'hafezzargar987@gmail.com';
+  const isMasterAdmin = user?.role === 'super-admin' || user?.email === 'hafezzargar987@gmail.com';
 
   return (
     <Tab.Navigator
       initialRouteName={isMasterAdmin ? 'Admin' : 'Home'}
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => {
-          const iconSize = size || 24;
+          const iconSize = size || 22;
           if (route.name === 'Home') return <Home color={color} size={iconSize} />;
           if (route.name === 'MCQ') return <BookOpen color={color} size={iconSize} />;
           if (route.name === 'Admin') return <Shield color={color} size={iconSize} />;
@@ -62,10 +64,12 @@ const MainTabs = () => {
         tabBarLabel: ({ focused, color }) => (
           <Text style={{ 
             color, 
-            fontSize: 11, 
-            fontWeight: focused ? 'bold' : '500',
-            marginTop: -5,
-            marginBottom: 5 
+            fontSize: 10, 
+            fontWeight: focused ? '700' : '500',
+            textAlign: 'center',
+            width: '100%',
+            marginTop: -2,
+            marginBottom: 6 
           }}>
             {route.name}
           </Text>
@@ -73,15 +77,24 @@ const MainTabs = () => {
         tabBarStyle: {
           backgroundColor: theme?.colors?.surface || '#1e293b',
           borderTopWidth: 0,
-          height: 65,
+          height: Platform.OS === 'ios' ? 88 : 70,
+          paddingTop: 10,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+          elevation: 0,
         },
+        tabBarItemStyle: {
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+        },
+        tabBarLabelPosition: 'below-icon',
         tabBarActiveTintColor: theme?.colors?.primary || '#fbbf24',
         tabBarInactiveTintColor: theme?.colors?.textMuted || '#94a3b8',
         headerShown: false,
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      {!isMasterAdmin && <Tab.Screen name="MCQ" component={DailyMCQScreen} />}
+      {!isMasterAdmin && <Tab.Screen name="Home" component={HomeScreen} />}
+      {!isMasterAdmin && <Tab.Screen name="MCQ" component={MCQHubScreen} />}
       {isMasterAdmin && (
         <Tab.Screen 
           name="Admin" 
@@ -89,9 +102,9 @@ const MainTabs = () => {
           options={{ }}
         />
       )}
-      <Tab.Screen name="Ranks" component={LeaderboardScreen} />
+      {!isMasterAdmin && <Tab.Screen name="Ranks" component={LeaderboardScreen} />}
       <Tab.Screen name="Profile" component={ProfileScreen} />
-      <Tab.Screen name="Blogs" component={BlogListScreen} options={{ tabBarButton: () => null }} />
+      {!isMasterAdmin && <Tab.Screen name="Blogs" component={BlogListScreen} options={{ tabBarButton: () => null }} />}
     </Tab.Navigator>
   );
 };
@@ -125,7 +138,11 @@ const AppNavigator = () => {
           <Stack.Screen name="Register" component={RegisterScreen} />
         </>
       ) : (
-        <Stack.Screen name="Main" component={MainWrapper} />
+        <>
+          <Stack.Screen name="Main" component={MainWrapper} />
+          <Stack.Screen name="TakeMission" component={DailyMCQScreen} />
+          <Stack.Screen name="BlogDetail" component={BlogDetailScreen} />
+        </>
       )}
     </Stack.Navigator>
   );

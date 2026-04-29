@@ -1,34 +1,76 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
-import { Shield, BookOpen, Trophy, Users, AlertTriangle, TrendingUp, Newspaper, Layers } from 'lucide-react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, RefreshControl, ActivityIndicator, Dimensions } from 'react-native';
+import { Shield, BookOpen, Trophy, Users, AlertTriangle, TrendingUp, Newspaper, Layers, UserCheck, UserMinus, Clock, Star } from 'lucide-react-native';
 import { useTheme } from '../../utils/useTheme';
+import api from '../../utils/api';
+
+const { width } = Dimensions.get('window');
 
 const AdminDashboard = ({ navigation }) => {
   const theme = useTheme();
-  
-  const stats = [
-    { label: 'Total Users', value: '1,284', Icon: Users, color: '#3b82f6' },
-    { label: 'Active Today', value: '432', Icon: TrendingUp, color: '#22c55e' },
-    { label: 'Pending MCQs', value: '5', Icon: BookOpen, color: '#eab308' },
-    { label: 'Unpaid Prizes', value: '₹4.5k', Icon: Trophy, color: '#ef4444' },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [data, setData] = useState(null);
+
+  const fetchStats = async () => {
+    try {
+      const res = await api.get('/admin/stats');
+      if (res.data.success) {
+        setData(res.data);
+      }
+    } catch (error) {
+      console.error('Error fetching admin stats:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchStats();
+  }, []);
 
   const s = styles(theme);
 
+  if (loading && !refreshing) {
+    return (
+      <View style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+
+  const stats = data ? [
+    { label: 'Total Registered', value: data.stats.totalUsers, Icon: Users, color: '#3b82f6' },
+    { label: 'Active Today', value: data.stats.activeUsers, Icon: TrendingUp, color: '#22c55e' },
+    { label: 'Pending MCQ', value: data.stats.pendingMCQs, Icon: BookOpen, color: '#eab308' },
+    { label: 'Pending Prize', value: data.stats.unpaidPrizes, Icon: Trophy, color: '#ef4444' },
+  ] : [];
+
   return (
     <SafeAreaView style={s.container}>
-      <ScrollView style={s.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={s.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+      >
         <View style={s.header}>
           <View>
-            <Text style={s.welcome}>Admin Access</Text>
-            <Text style={s.name}>Control Center</Text>
+            <Text style={s.welcome}>Admin Dashboard</Text>
+            <Text style={s.name}>Platform Overview</Text>
           </View>
           <View style={s.badge}>
-            <Shield color={theme?.colors?.primary || '#fbbf24'} size={16} />
+            <Shield color={theme.colors.primary} size={16} />
             <Text style={s.badgeText}>SuperAdmin</Text>
           </View>
         </View>
 
+        {/* Primary Stats Grid */}
         <View style={s.statsGrid}>
           {stats.map((stat, i) => {
             const IconComp = stat.Icon;
@@ -44,83 +86,103 @@ const AdminDashboard = ({ navigation }) => {
           })}
         </View>
 
+        {/* User Engagement Analytics */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Quick Actions</Text>
+          <Text style={s.sectionTitle}>User Growth & Health</Text>
+          <View style={s.analyticsRow}>
+            <View style={s.analyticsBox}>
+              <Text style={s.analyticsLabel}>New Users (Weekly)</Text>
+              <Text style={s.analyticsValue}>+{data?.stats?.newUsers?.weekly || 0}</Text>
+              <Text style={s.analyticsSub}>Last 7 days</Text>
+            </View>
+            <View style={s.analyticsBox}>
+              <Text style={s.analyticsLabel}>Active vs Inactive</Text>
+              <View style={s.ratioBar}>
+                <View style={[s.ratioFill, { flex: data?.stats?.activeUsers || 1, backgroundColor: '#22c55e' }]} />
+                <View style={[s.ratioFill, { flex: data?.stats?.inactiveUsers || 1, backgroundColor: '#475569' }]} />
+              </View>
+              <Text style={s.analyticsSub}>{data?.stats?.activeUsers} Active · {data?.stats?.inactiveUsers} Inactive</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Security & Moderation */}
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Moderation</Text>
+          <View style={s.modRow}>
+            <View style={[s.modCard, { borderColor: '#ef444430' }]}>
+              <AlertTriangle color="#ef4444" size={20} />
+              <View>
+                <Text style={s.modVal}>{data?.stats?.bannedUsers || 0}</Text>
+                <Text style={s.modLab}>Banned Users</Text>
+              </View>
+            </View>
+            <View style={[s.modCard, { borderColor: '#eab30830' }]}>
+              <Clock color="#eab308" size={20} />
+              <View>
+                <Text style={s.modVal}>{data?.stats?.pendingApprovals || 0}</Text>
+                <Text style={s.modLab}>Pending Approval</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Top Performers Ranking */}
+        <View style={s.section}>
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Top Students</Text>
+            <Star color="#eab308" size={18} />
+          </View>
+          <View style={s.rankingCard}>
+            {data?.topPerformers?.map((user, index) => (
+              <View key={user._id} style={[s.rankItem, index === 4 && { borderBottomWidth: 0 }]}>
+                <Text style={s.rankNum}>#{index + 1}</Text>
+                <View style={s.rankInfo}>
+                  <Text style={s.rankName}>{user.name}</Text>
+                  <Text style={s.rankUser}>@{user.username}</Text>
+                </View>
+                <View style={s.rankScoreBox}>
+                  <Text style={s.rankScore}>{user.weeklyPrepScore}</Text>
+                  <Text style={s.rankLabel}>Score</Text>
+                </View>
+              </View>
+            ))}
+            {(!data?.topPerformers || data.topPerformers.length === 0) && (
+              <Text style={s.emptyText}>No scores recorded yet</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Quick Actions Navigation */}
+        <View style={[s.section, { marginBottom: 100 }]}>
+          <Text style={s.sectionTitle}>Administration</Text>
           
-          <TouchableOpacity 
-            style={s.actionCard}
-            onPress={() => navigation.navigate('AdminApprovals')}
-          >
-            <View style={[s.actionIcon, { backgroundColor: '#3b82f620' }]}>
-              <Users color="#3b82f6" size={24} />
-            </View>
-            <View style={s.actionInfo}>
-              <Text style={s.actionName}>User Approvals</Text>
-              <Text style={s.actionSub}>Review & Approve New Registrations</Text>
-            </View>
-          </TouchableOpacity>
+          <View style={s.actionsGrid}>
+            <TouchableOpacity style={s.smallAction} onPress={() => navigation.navigate('AdminApprovals')}>
+              <UserCheck color={theme.colors.primary} size={20} />
+              <Text style={s.smallActionText}>Approvals</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={s.smallAction} onPress={() => navigation.navigate('AdminMCQ')}>
+              <BookOpen color="#eab308" size={20} />
+              <Text style={s.smallActionText}>MCQ Review</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={s.actionCard}
-            onPress={() => navigation.navigate('AdminBlogs')}
-          >
-            <View style={[s.actionIcon, { backgroundColor: '#22c55e20' }]}>
-              <Newspaper color="#22c55e" size={24} />
-            </View>
-            <View style={s.actionInfo}>
-              <Text style={s.actionName}>Review Daily News</Text>
-              <Text style={s.actionSub}>AI Generated Blogs Pending</Text>
-            </View>
-          </TouchableOpacity>
+            <TouchableOpacity style={s.smallAction} onPress={() => navigation.navigate('AdminSubjects')}>
+              <Layers color="#a855f7" size={20} />
+              <Text style={s.smallActionText}>Subjects</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={s.actionCard}
-            onPress={() => navigation.navigate('AdminMCQ')}
-          >
-            <View style={[s.actionIcon, { backgroundColor: '#eab30820' }]}>
-              <BookOpen color="#eab308" size={24} />
-            </View>
-            <View style={s.actionInfo}>
-              <Text style={s.actionName}>Review Today's MCQs</Text>
-              <Text style={s.actionSub}>5 Pending Approval</Text>
-            </View>
-          </TouchableOpacity>
+            <TouchableOpacity style={s.smallAction} onPress={() => navigation.navigate('AdminPrizes')}>
+              <Trophy color="#3b82f6" size={20} />
+              <Text style={s.smallActionText}>Prizes</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={s.actionCard}
-            onPress={() => navigation.navigate('AdminPrizes')}
-          >
-            <View style={[s.actionIcon, { backgroundColor: '#3b82f620' }]}>
-              <Trophy color="#3b82f6" size={24} />
-            </View>
-            <View style={s.actionInfo}>
-              <Text style={s.actionName}>Prize Management</Text>
-              <Text style={s.actionSub}>Set Amounts & Mark Paid</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={s.actionCard}
-            onPress={() => navigation.navigate('AdminSubjects')}
-          >
-            <View style={[s.actionIcon, { backgroundColor: '#a855f720' }]}>
-              <Layers color="#a855f7" size={24} />
-            </View>
-            <View style={s.actionInfo}>
-              <Text style={s.actionName}>Manage Subjects</Text>
-              <Text style={s.actionSub}>Create, Enable/Disable Categories</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={s.actionCard}>
-            <View style={[s.actionIcon, { backgroundColor: '#ef444420' }]}>
-              <AlertTriangle color="#ef4444" size={24} />
-            </View>
-            <View style={s.actionInfo}>
-              <Text style={s.actionName}>Cheat Reports</Text>
-              <Text style={s.actionSub}>View Evidence Screenshots</Text>
-            </View>
-          </TouchableOpacity>
+            <TouchableOpacity style={s.smallAction} onPress={() => navigation.navigate('AdminBlogs')}>
+              <Newspaper color="#ef4444" size={20} />
+              <Text style={s.smallActionText}>News Review</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -128,81 +190,86 @@ const AdminDashboard = ({ navigation }) => {
 };
 
 const styles = (theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme?.colors?.background || '#0f172a' },
-  content: { flex: 1, padding: 24 },
+  container: { flex: 1, backgroundColor: theme.colors.background },
+  content: { flex: 1, padding: 16 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 32,
-    marginTop: 16,
+    marginBottom: 24,
+    marginTop: 10,
   },
-  welcome: { color: theme?.colors?.textMuted || '#94a3b8', fontSize: 14 },
-  name: { color: theme?.colors?.text || '#f8fafc', fontSize: 24, fontWeight: 'bold' },
+  welcome: { color: theme.colors.textMuted, fontSize: 13 },
+  name: { color: theme.colors.text, fontSize: 22, fontWeight: 'bold' },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme?.colors?.surface || '#1e293b',
+    backgroundColor: 'rgba(99,91,255,0.1)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(99,91,255,0.2)',
   },
-  badgeText: { color: theme?.colors?.primary || '#fbbf24', fontWeight: 'bold', fontSize: 12 },
+  badgeText: { color: theme.colors.primary, fontWeight: 'bold', fontSize: 11 },
+  
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 32,
+    gap: 10,
+    marginBottom: 24,
   },
   statCard: {
-    width: '46%', // Adjusted for gap
-    backgroundColor: theme?.colors?.surface || '#1e293b',
+    width: (width - 42) / 2,
+    backgroundColor: theme.colors.surface,
     padding: 16,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: theme.colors.border,
   },
   iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
-  statLabel: { color: theme?.colors?.textMuted || '#94a3b8', fontSize: 12, marginBottom: 4 },
-  statValue: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  section: { marginBottom: 32 },
-  sectionTitle: {
-    color: theme?.colors?.text || '#f8fafc',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  actionCard: {
-    backgroundColor: theme?.colors?.surface || '#1e293b',
-    borderRadius: 20,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.03)',
-  },
-  actionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  actionInfo: { flex: 1 },
-  actionName: { color: theme?.colors?.text || '#f8fafc', fontSize: 16, fontWeight: '600', marginBottom: 2 },
-  actionSub: { color: theme?.colors?.textMuted || '#94a3b8', fontSize: 12 },
+  statLabel: { color: theme.colors.textMuted, fontSize: 11, marginBottom: 4 },
+  statValue: { color: theme.colors.text, fontSize: 18, fontWeight: 'bold' },
+
+  section: { marginBottom: 24 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { color: theme.colors.text, fontSize: 16, fontWeight: 'bold', marginBottom: 12 },
+
+  analyticsRow: { flexDirection: 'row', gap: 10 },
+  analyticsBox: { flex: 1, backgroundColor: theme.colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: theme.colors.border },
+  analyticsLabel: { color: theme.colors.textMuted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', marginBottom: 8 },
+  analyticsValue: { color: theme.colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 4 },
+  analyticsSub: { color: theme.colors.textMuted, fontSize: 10 },
+  ratioBar: { height: 6, borderRadius: 3, flexDirection: 'row', overflow: 'hidden', marginVertical: 8 },
+  ratioFill: { height: '100%' },
+
+  modRow: { flexDirection: 'row', gap: 10 },
+  modCard: { flex: 1, backgroundColor: theme.colors.surface, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1 },
+  modVal: { color: theme.colors.text, fontSize: 16, fontWeight: 'bold' },
+  modLab: { color: theme.colors.textMuted, fontSize: 10 },
+
+  rankingCard: { backgroundColor: theme.colors.surface, borderRadius: 20, padding: 8, borderWidth: 1, borderColor: theme.colors.border },
+  rankItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  rankNum: { width: 30, color: theme.colors.primary, fontWeight: 'bold', fontSize: 14 },
+  rankInfo: { flex: 1 },
+  rankName: { color: theme.colors.text, fontSize: 14, fontWeight: '600' },
+  rankUser: { color: theme.colors.textMuted, fontSize: 11 },
+  rankScoreBox: { alignItems: 'flex-end' },
+  rankScore: { color: '#22c55e', fontSize: 14, fontWeight: 'bold' },
+  rankLabel: { color: theme.colors.textMuted, fontSize: 9 },
+  emptyText: { textAlign: 'center', color: theme.colors.textMuted, padding: 20, fontSize: 13 },
+
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  smallAction: { width: (width - 42) / 2, height: 60, backgroundColor: theme.colors.surface, borderRadius: 14, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 12, borderWidth: 1, borderColor: theme.colors.border },
+  smallActionText: { color: theme.colors.text, fontSize: 13, fontWeight: '600' },
 });
 
 export default AdminDashboard;

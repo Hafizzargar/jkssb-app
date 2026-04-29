@@ -1,10 +1,17 @@
 const Blog = require('../../models/Blog');
-const { generateBlogs } = require('../../services/aiService');
 
-/**
- * Get pending blogs for review
- * GET /api/admin/blog/pending
- */
+// Create Blog
+exports.createBlog = async (req, res) => {
+  try {
+    const blog = new Blog(req.body);
+    await blog.save();
+    res.status(201).json(blog);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// Get Pending Blogs
 exports.getPendingBlogs = async (req, res) => {
   try {
     const blogs = await Blog.find({ isPublished: false }).sort({ createdAt: -1 });
@@ -14,56 +21,7 @@ exports.getPendingBlogs = async (req, res) => {
   }
 };
 
-/**
- * Approve and Publish Blog
- * PATCH /api/admin/blog/approve/:id
- */
-exports.approveBlog = async (req, res) => {
-  try {
-    // Refresh expiry to the next 11:59 AM upon approval
-    const now = new Date();
-    const expiry = new Date();
-    expiry.setHours(11, 59, 0, 0);
-    if (now > expiry) expiry.setDate(expiry.getDate() + 1);
-
-    const blog = await Blog.findByIdAndUpdate(
-      req.params.id,
-      { isPublished: true, expiresAt: expiry },
-      { new: true }
-    );
-
-    // Clear Cache
-    const redisClient = req.app.get('getRedis')();
-    if (redisClient) await redisClient.del('published_blogs');
-
-    res.json({ message: 'Blog published successfully', data: blog });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-/**
- * Delete Blog
- * DELETE /api/admin/blog/:id
- */
-exports.deleteBlog = async (req, res) => {
-  try {
-    await Blog.findByIdAndDelete(req.params.id);
-
-    // Clear Cache
-    const redisClient = req.app.get('getRedis')();
-    if (redisClient) await redisClient.del('published_blogs');
-
-    res.json({ message: 'Blog deleted' });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-/**
- * Get all Published Blogs
- * GET /api/admin/blog/published
- */
+// Get Published Blogs (Admin View)
 exports.getPublishedBlogs = async (req, res) => {
   try {
     const blogs = await Blog.find({ isPublished: true }).sort({ createdAt: -1 });
@@ -73,96 +31,87 @@ exports.getPublishedBlogs = async (req, res) => {
   }
 };
 
-/**
- * Update Blog (Edit Title, Content, Image)
- * PUT /api/admin/blog/:id
- */
-exports.updateBlog = async (req, res) => {
+// Approve/Publish Blog
+exports.approveBlog = async (req, res) => {
   try {
-    const { title, content, image, category } = req.body;
     const blog = await Blog.findByIdAndUpdate(
       req.params.id, 
-      { title, content, image, category }, 
+      { isPublished: true }, 
       { new: true }
     );
     res.json(blog);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
-/**
- * Create Manual Blog (Deletes after 1 hour or 11:59 AM)
- * POST /api/admin/blog/manual
- */
-exports.createManualBlog = async (req, res) => {
+// Update Blog
+exports.updateBlog = async (req, res) => {
   try {
-    const { title, content, category, image } = req.body;
-    
-    // Set expiry to 11:59 AM IST
-    const now = new Date();
-    const expiry = new Date();
-    expiry.setHours(11, 59, 0, 0);
-    if (now > expiry) expiry.setDate(expiry.getDate() + 1);
+    const blog = await Blog.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json(blog);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
 
-    const blog = new Blog({
-      title,
-      content,
-      category,
-      image,
-      isPublished: true,
-      isAI: false,
-      expiresAt: expiry
-    });
-    await blog.save();
-    res.status(201).json(blog);
+// Delete Blog
+exports.deleteBlog = async (req, res) => {
+  try {
+    await Blog.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Blog deleted' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Trigger AI Blog Generation manually
- * POST /api/admin/blog/generate
- */
-exports.triggerGeneration = async (req, res) => {
+// Purge all pending blogs
+exports.purgePendingBlogs = async (req, res) => {
   try {
-    const blogs = await generateBlogs();
+    await Blog.deleteMany({ isPublished: false });
+    res.json({ message: 'All pending blogs deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const aiService = require('../../services/aiService');
+
+// Mock AI Generation (Now using real Gemini!)
+exports.generateBlog = async (req, res) => {
+  try {
+    const subject = req.body?.subject || 'JKSSB';
+    const aiBlogs = await aiService.generateBlogs(subject);
     
-    if (!blogs || blogs.length === 0) {
-      console.log('❌ ERROR: Gemini returned 0 blogs. Aborting save.');
-      return res.status(500).json({ message: 'AI failed to generate blogs. Please try again.' });
+    if (!aiBlogs || aiBlogs.length === 0) {
+      return res.status(500).json({ message: 'AI generation failed' });
     }
 
-    // Set expiry to 11:59 AM IST
-    const now = new Date();
-    const expiry = new Date();
-    expiry.setHours(11, 59, 0, 0);
-    if (now > expiry) expiry.setDate(expiry.getDate() + 1);
+    // Save all generated blogs as pending
+    const savedBlogs = [];
+    for (const blogData of aiBlogs) {
+      const blog = new Blog({
+        ...blogData,
+        isAI: true,
+        isPublished: false,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+      });
+      await blog.save();
+      savedBlogs.push(blog);
+    }
 
-    const blogDocs = blogs.map(b => ({ 
-      ...b, 
-      isPublished: false, 
-      isAI: true,
-      expiresAt: expiry 
-    }));
-
-    const saved = await Blog.insertMany(blogDocs);
-    res.status(201).json(saved);
+    res.status(201).json({ message: `Successfully generated ${savedBlogs.length} news items`, blogs: savedBlogs });
   } catch (error) {
+    console.error('AI Generation Error:', error);
     res.status(500).json({ message: error.message });
   }
 };
-/**
- * Refine Blog Title using AI
- * POST /api/admin/blog/refine-title
- */
-exports.refineTitle = async (req, res) => {
+
+exports.refineBlogTitle = async (req, res) => {
   try {
     const { title, content } = req.body;
-    const { refineTitle } = require('../../services/aiService');
-    const newTitle = await refineTitle(title, content);
-    res.json({ title: newTitle });
+    const refined = await aiService.refineTitle(title, content);
+    res.json({ title: refined });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

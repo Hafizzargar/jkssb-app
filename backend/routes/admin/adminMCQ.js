@@ -8,6 +8,7 @@ router.use(adminOnly);
 
 router.get('/pending', adminMCQController.getPendingMCQs);
 router.get('/active', adminMCQController.getActiveMCQs);
+router.get('/past', adminMCQController.getPastMCQs);
 router.post('/generate', adminMCQController.triggerGeneration);
 router.post('/manual', adminMCQController.createManualMCQ);
 router.patch('/approve/:id', adminMCQController.approveMCQ);

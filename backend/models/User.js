@@ -36,6 +36,11 @@ const UserSchema = new mongoose.Schema({
   isAdmin: { type: Boolean, default: false },
   status: { type: String, enum: ['PENDING', 'APPROVED', 'REJECTED'], default: 'PENDING' },
   isBanned: { type: Boolean, default: false },
+  
+  // Notification Info
+  pushToken: { type: String }, // For Expo/Firebase Push Notifications
+  notificationsEnabled: { type: Boolean, default: true },
+
   createdAt: { type: Date, default: Date.now }
 });
 

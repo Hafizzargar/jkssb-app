@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Animated, Dimensions, StatusBar, ActivityIndicator } from 'react-native';
 import { useDispatch } from 'react-redux';
 import { loginSuccess } from '../../redux/authSlice';
-import { ShieldCheck, ArrowLeft, RefreshCw } from 'lucide-react-native';
+import { Shield, ArrowLeft, RefreshCw } from 'lucide-react-native';
 import { useTheme } from '../../utils/useTheme';
 import { spacing, borderRadius } from '../../theme';
 import client from '../../api/client';
@@ -87,7 +87,7 @@ const OTPScreen = ({ navigation, route }) => {
           <View style={s.header}>
             <View style={s.logoContainer}>
               <View style={s.logoGlow}>
-                <ShieldCheck color={theme.colors.primary} size={48} strokeWidth={2.5} />
+                <Shield color={theme.colors.primary} size={48} strokeWidth={2.5} />
               </View>
             </View>
             <Text style={s.title}>Verification</Text>

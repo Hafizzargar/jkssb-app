@@ -1,4 +1,5 @@
 const DailyMCQ = require('../../models/DailyMCQ');
+const MCQAttempt = require('../../models/MCQAttempt');
 const { generateMCQs } = require('../../services/aiService');
 
 /**
@@ -136,14 +137,59 @@ exports.getPendingMCQs = async (req, res) => {
  */
 exports.getActiveMCQs = async (req, res) => {
   try {
-    // Get today's date in YYYY-MM-DD format based on server local time
-    const today = new Date().toLocaleDateString('en-CA'); 
+    const today = new Date().toLocaleDateString('en-CA');
+    const now = new Date();
+
+    // Only return missions for today that have NOT yet ended
     const active = await DailyMCQ.find({ 
-      date: today 
+      date: today,
+      endTime: { $gte: now }   // ← key fix: exclude expired missions
     }).sort({ startTime: 1 });
     
-    console.log(`📊 Admin: Found ${active.length} missions for today.`);
+    console.log(`📊 Admin: Found ${active.length} active/upcoming missions for today.`);
     res.json(active);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * Get all past MCQs (Finished missions)
+ * GET /api/admin/mcq/past
+ */
+exports.getPastMCQs = async (req, res) => {
+  try {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+
+    // Missions where endTime has passed OR the date is before today
+    const past = await DailyMCQ.find({ 
+      $or: [
+        { endTime: { $lt: now } },
+        { status: { $in: ['ACTIVE', 'COMPLETED'] }, date: { $lt: today } }
+      ]
+    }).sort({ endTime: -1 });
+
+    const enrichedPast = await Promise.all(past.map(async (m) => {
+      const attemptsCount = await MCQAttempt.countDocuments({ dailyMCQ: m._id });
+      
+      const toppers = await MCQAttempt.find({ dailyMCQ: m._id })
+        .sort({ score: -1, attemptedAt: 1 })
+        .limit(3)
+        .populate('user', 'name username');
+
+      return {
+        ...m.toObject(),
+        attemptsCount,
+        toppers: toppers.map(t => ({
+          name: t.user?.name || 'Unknown User',
+          username: t.user?.username || 'user',
+          score: t.score
+        }))
+      };
+    }));
+
+    res.json(enrichedPast);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -156,28 +202,32 @@ exports.getActiveMCQs = async (req, res) => {
 exports.createManualMCQ = async (req, res) => {
   try {
     const { id, subject, questions, testDuration, timePerQuestion, startTime, endTime, date } = req.body;
-    // Use explicit date if provided, otherwise infer from startTime, or fallback to today
     const selectedDate = date || (startTime ? new Date(startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
 
-    // Normalize questions to match schema
-    const normalizedQuestions = questions.map(q => ({
-      question: q.question,
-      options: q.options,
-      correct: q.correct || q.correctAnswer,
-      explanation: q.explanation || ''
-    }));
+    const normalizedQuestions = questions
+      .filter(q => q.question && q.question.trim() !== '')  // Drop blank questions
+      .map(q => ({
+        question: q.question.trim(),
+        options: q.options.map(o => (o || '').trim()),
+        correct: q.correct || q.correctAnswer || 'A',
+        explanation: q.explanation || ''
+      }))
+      .filter(q => q.options.filter(o => o !== '').length === 4); // Ensure 4 valid options
 
-    console.log(`📝 Manual MCQ Submit: ${subject} for date ${selectedDate} (${normalizedQuestions.length} Qs)`);
+    if (normalizedQuestions.length < 2) {
+      return res.status(400).json({ 
+        message: `Only ${normalizedQuestions.length} complete question(s) found. Please fill in at least 2 questions with all 4 options.` 
+      });
+    }
 
-    // Find by ID if provided, otherwise fallback to the selected date
+    console.log(`📝 Saving ${normalizedQuestions.length} valid questions out of ${questions.length} submitted.`);
+
     let mcqSet = null;
     if (id) {
       mcqSet = await DailyMCQ.findById(id);
     }
-    // Removed date-based lookup to allow multiple missions per day
 
     if (!req.admin || !req.admin._id) {
-      console.error('❌ Admin session missing during MCQ save');
       return res.status(401).json({ message: 'Session expired. Please login again.' });
     }
 
@@ -208,10 +258,8 @@ exports.createManualMCQ = async (req, res) => {
     }
 
     await mcqSet.save();
-    console.log('✅ MCQ Mission saved successfully:', mcqSet._id);
     res.json({ message: 'Mission updated successfully!', data: mcqSet });
   } catch (error) {
-    console.error('❌ Manual MCQ Error:', error.message);
     res.status(500).json({ message: error.message });
   }
 };

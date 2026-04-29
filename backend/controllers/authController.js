@@ -193,3 +193,64 @@ exports.logout = (req, res) => {
   res.clearCookie('connect.sid');
   res.json({ message: 'Logged out' });
 };
+
+/**
+ * Update Push Token
+ */
+exports.savePushToken = async (req, res) => {
+  try {
+    const { pushToken } = req.body;
+    const userId = req.session.userId;
+
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+    if (!pushToken) return res.status(400).json({ message: 'Token required' });
+
+    await User.findByIdAndUpdate(userId, { pushToken });
+    res.json({ message: 'Push token updated' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * Update Profile (Name & Username)
+ */
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, username } = req.body;
+    const userId = req.session.userId;
+
+    console.log('📝 Update Profile Request:', { userId, name, username });
+
+    if (!userId) {
+      console.log('❌ Update failed: Unauthorized (No userId in session)');
+      return res.status(401).json({ message: 'Session expired. Please login again.' });
+    }
+
+    // If username is changing, check for uniqueness
+    if (username) {
+      const existing = await User.findOne({ username, _id: { $ne: userId } });
+      if (existing) {
+        console.log('❌ Update failed: Username already taken:', username);
+        return res.status(400).json({ message: 'Username is already taken' });
+      }
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId, 
+      { name, username }, 
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      console.log('❌ Update failed: User not found in DB');
+      return res.status(404).json({ message: 'User record not found' });
+    }
+
+    console.log('✅ Profile updated successfully for:', updatedUser.email);
+    res.json({ message: 'Profile updated', user: updatedUser });
+  } catch (error) {
+    console.error('❌ Update Profile Error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};

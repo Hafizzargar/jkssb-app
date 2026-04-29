@@ -1,8 +1,15 @@
 import axios from 'axios';
 import { toast } from '../components/Toast';
 
-// IMPORTANT: If testing on a physical phone, replace 'localhost' with your computer's local IP address
-const BASE_URL = 'http://localhost:5000/api';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+
+const hostUri = Constants.expoConfig?.hostUri;
+const machineIP = hostUri ? hostUri.split(':')[0] : '10.0.2.2';
+
+const BASE_URL = Platform.OS === 'web' 
+  ? 'http://localhost:5000/api' 
+  : `http://${machineIP}:5000/api`;
 
 const client = axios.create({
   baseURL: BASE_URL,

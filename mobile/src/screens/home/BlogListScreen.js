@@ -16,11 +16,10 @@ const BlogListScreen = ({ navigation }) => {
 
   const fetchBlogs = async () => {
     try {
-      const res = await api.get('/api/blogs');
+      const res = await api.get('/blogs');
       setBlogs(res.data);
     } catch (error) {
       console.error('Fetch blogs error:', error);
-      Alert.alert('Debug', 'Error: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -56,7 +55,7 @@ const BlogListScreen = ({ navigation }) => {
         <Text style={s.title}>{item.title}</Text>
         <Text style={s.content} numberOfLines={4}>{item.content}</Text>
         
-        <TouchableOpacity style={s.readMore}>
+        <TouchableOpacity style={s.readMore} onPress={() => navigation.navigate('BlogDetail', { blog: item })}>
           <Text style={s.readMoreText}>Read Full Article</Text>
           <ArrowRight color={theme.colors.primary} size={16} />
         </TouchableOpacity>

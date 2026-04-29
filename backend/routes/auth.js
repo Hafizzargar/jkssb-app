@@ -7,6 +7,8 @@ router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.get('/check', authController.checkAuth);
 router.post('/logout', authController.logout);
+router.post('/push-token', authController.savePushToken);
+router.post('/update-profile', authController.updateProfile);
 
 // Admin Routes
 router.get('/pending-users', adminOnly, authController.getPendingUsers);

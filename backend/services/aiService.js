@@ -101,18 +101,19 @@ const generateMCQs = async (subject, difficulty = 'MEDIUM', count = 20) => {
 /**
  * Generates Daily Blogs using Gemini
  */
-const generateBlogs = async () => {
-  console.log(`♊ Gemini: Generating daily news blogs...`);
+const generateBlogs = async (subject = 'JKSSB') => {
+  console.log(`♊ Gemini: Generating daily news blogs for ${subject}...`);
   try {
     const model = genAI.getGenerativeModel({ 
       model: "gemini-flash-latest",
       generationConfig: { responseMimeType: "application/json" }
     });
-    const prompt = `Generate 3 current affairs blog posts for students in Jammu & Kashmir preparing for JKSSB exams.
-                    One post for J&K news, one for India, and one for World.
-                    Include a catchy title, a suggested high-quality image URL from Unsplash (e.g., https://images.unsplash.com/photo-...?auto=format&fit=crop&q=80&w=1000 based on subject), and the content.
-                    Format strictly as a JSON array:
-                    [{ "title": "...", "content": "...", "category": "J&K | INDIA | WORLD", "image": "unsplash_url" }]`;
+    const prompt = `Generate 3 engaging news blog posts for students preparing for ${subject} exams.
+                    Write about recent developments, tips, exam updates, and current affairs related to ${subject}.
+                    For each post include a catchy title, detailed content (at least 3 paragraphs), and a relevant high-quality Unsplash image URL.
+                    IMPORTANT: Use exactly "${subject}" as the category for ALL 3 posts.
+                    Format strictly as a valid JSON array with NO extra text:
+                    [{ "title": "...", "content": "...", "category": "${subject}", "image": "https://images.unsplash.com/photo-XXXXXXXXXX?auto=format&fit=crop&q=80&w=1000" }]`;
 
     const result = await model.generateContent(prompt);
     const text = result.response.text();
