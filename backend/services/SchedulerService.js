@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const DailyMCQ = require('../models/DailyMCQ');
-const { broadcastNotification } = require('./NotificationService');
+const { broadcastNotification } = require('./notificationService');
 
 /**
  * ⏰ SCHEDULER SERVICE
