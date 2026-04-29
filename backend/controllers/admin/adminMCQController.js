@@ -1,6 +1,6 @@
 const DailyMCQ = require('../../models/DailyMCQ');
 const MCQAttempt = require('../../models/MCQAttempt');
-const { generateMCQs } = require('../../services/aiService');
+const { generateMCQs, generateNeetMock } = require('../../services/aiService');
 
 /**
  * Approve an MCQ set
@@ -55,13 +55,18 @@ exports.rejectMCQ = async (req, res) => {
  */
 exports.deleteMCQ = async (req, res) => {
   try {
+    if (!req.params.id) return res.status(400).json({ message: 'No ID provided' });
     await DailyMCQ.findByIdAndDelete(req.params.id);
 
     // Clear Redis Cache
-    const redisClient = req.app.get('getRedis')();
-    if (redisClient) {
-      console.log('🧹 Clearing Redis Cache (todays_mcqs)');
-      await redisClient.del('todays_mcqs');
+    try {
+      const redisClient = req.app.get('getRedis')();
+      if (redisClient) {
+        console.log('🧹 Clearing Redis Cache (todays_mcqs)');
+        await redisClient.del('todays_mcqs');
+      }
+    } catch (redisErr) {
+      console.log('⚠️ Redis skip:', redisErr.message);
     }
 
     console.log(`🗑️ SUCCESS: MCQ Deleted from Database: ${req.params.id}`);
@@ -77,8 +82,23 @@ exports.deleteMCQ = async (req, res) => {
  */
 exports.triggerGeneration = async (req, res) => {
   try {
-    const { subject, difficulty, count, noSave } = req.body || {};
-    const questions = await generateMCQs(subject || 'GK_JK', difficulty || 'MEDIUM', count || 20);
+    const { subject, difficulty, count, noSave, mode, sections } = req.body || {};
+    
+    let questions = [];
+    if (sections && Array.isArray(sections) && sections.length > 0) {
+      // Use custom sections distribution if provided - ensure counts are numbers
+      const cleanSections = sections.map(s => ({
+        name: s.name,
+        count: parseInt(s.count) || 0
+      }));
+      questions = await generateNeetMock(mode || 'CUSTOM', difficulty || 'MEDIUM', cleanSections);
+    } else if (mode) {
+      // Use pattern ID
+      questions = await generateNeetMock(mode, difficulty || 'MEDIUM');
+    } else {
+      // Basic single subject generation
+      questions = await generateMCQs(subject || 'NEET', difficulty || 'MEDIUM', count || 20);
+    }
     
     if (noSave) {
       return res.json({ message: 'Questions generated', data: { questions } });
@@ -201,7 +221,7 @@ exports.getPastMCQs = async (req, res) => {
  */
 exports.createManualMCQ = async (req, res) => {
   try {
-    const { id, subject, questions, testDuration, timePerQuestion, startTime, endTime, date } = req.body;
+    const { id, subject, questions, testDuration, timePerQuestion, startTime, endTime, date, isPrizeTest, entryFee, prizeDistribution } = req.body;
     const selectedDate = date || (startTime ? new Date(startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
 
     const normalizedQuestions = questions
@@ -240,6 +260,9 @@ exports.createManualMCQ = async (req, res) => {
       mcqSet.endTime = endTime;
       mcqSet.date = selectedDate; 
       mcqSet.status = 'ACTIVE'; 
+      mcqSet.isPrizeTest = isPrizeTest || false;
+      mcqSet.entryFee = entryFee || 0;
+      mcqSet.prizeDistribution = prizeDistribution || [];
       mcqSet.approvedBy = req.admin._id;
       mcqSet.approvedAt = new Date();
     } else {
@@ -252,6 +275,9 @@ exports.createManualMCQ = async (req, res) => {
         startTime,
         endTime,
         status: 'ACTIVE',
+        isPrizeTest: isPrizeTest || false,
+        entryFee: entryFee || 0,
+        prizeDistribution: prizeDistribution || [],
         approvedBy: req.admin._id,
         approvedAt: new Date()
       });

@@ -1,6 +1,6 @@
-# adaptLearn - AI-Powered MCQ Assessment Platform
+# Medx Institute - Premium NEET Assessment Platform
 
-A robust, high-performance education platform designed for competitive exam preparation (JKSSB, UPSC, SSC). The platform features an AI-driven administration engine and a premium, gamified student experience.
+A robust, high-performance education platform specifically designed for NEET preparation. The platform features an AI-driven administration engine and a premium, gamified student experience.
 
 ---
 
@@ -23,7 +23,20 @@ The MCQ system is designed for high-stakes, time-bound competition with the foll
 - **Draft & Publish**: A dedicated workflow to review, edit, and publish AI-generated content.
 - **Student Feed**: High-density cards featuring "New" badges, reading time estimates, and subject tags.
 
-### 3. 👤 Profile & User Statistics
+### 3. 💰 Economics & Prize System (Dream11 Model)
+A complete monetization and reward engine built for high-stakes competition:
+- **Revenue Models**:
+  - **Fixed Prizes**: Static reward amounts set by admin.
+  - **Entry Fee Based**: Dynamic prize pools funded by user entries. Platform keeps a configurable commission (e.g., 20%), and the rest is distributed to winners.
+- **Dynamic Reward Distribution**:
+  - **Multi-Rank Support**: Define prizes for any number of ranks (Rank 1, 2, 3... N).
+  - **Live Simulation**: Admin portal features a real-time economics calculator to preview total collection, platform profit, and prize pool before publishing.
+- **Mission Integration**:
+  - Toggle "Prize Mission" status for individual tests.
+  - Custom entry fees per mission.
+  - Visual gold trophy badges on the mission list for student awareness.
+
+### 4. 👤 Profile & User Statistics
 - **Performance Analytics**: Visual tracking of "Subject Mastery" and aggregate scores.
 - **Rankings**: Global rank vs. Category-specific rank.
 - **KYC-Style Security**: Admin approval workflow for new registrations to maintain platform integrity.
@@ -33,12 +46,14 @@ The MCQ system is designed for high-stakes, time-bound competition with the foll
 ## 🛠️ Technical Excellence
 
 ### 📱 Mobile (React Native / Expo)
-- **Dynamic API Client**: Custom `api.js` with auto-IP detection for seamless connectivity across Real Devices, Simulators, and Emulators.
-- **Premium Design System**: Fully customized theme with dark/light modes, vibrant indigo/gold accents, and glassmorphic components.
-- **Smooth Animations**: Integrated `react-native-reanimated` for layout transitions and "NEW" badge pulses.
+- **Advanced API Client**: Auto-IP detection for Real Device/Emulator connectivity + Global request interceptors.
+- **Premium UI Components**: 
+  - **Chip Picker**: Smooth horizontal subject selection.
+  - **Dynamic Rank Editor**: Real-time management of reward lists.
 - **Balanced Navigation**: Optimized bottom tab bar with even item distribution and iOS safe-area support.
 
 ### ⚙️ Backend (Node.js / MongoDB)
+- **Flexible Prize Schema**: Robust model supporting both static and percentage-based economics.
 - **Robust Controller Logic**: Advanced timing checks (IsTooEarly/IsTooLate) to prevent mission unauthorized access.
 - **Negative Marking Support**: Configurable scoring logic with penalty support for wrong answers.
 - **Session-Based Auth**: Secure session management with MongoDB storage and cookie-based validation.

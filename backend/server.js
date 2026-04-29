@@ -84,8 +84,11 @@ app.use('/api/admin/mcq', require('./routes/admin/adminMCQ'));
 app.use('/api/admin/blog', require('./routes/admin/adminBlog'));
 app.use('/api/admin/prize', require('./routes/admin/adminPrize'));
 app.use('/api/admin/subject', require('./routes/admin/adminSubject'));
+app.use('/api/admin/pattern', require('./routes/admin/adminPattern'));
 app.use('/api/admin/stats', require('./routes/admin/adminStats'));
 app.use('/api/blogs', require('./routes/blog'));
+app.use('/api/config', require('./routes/config'));
+app.use('/api/admin/config', require('./routes/admin/config'));
 
 app.get('/', (req, res) => {
   res.json({ message: 'JKSSB PrepMaster API is running' });

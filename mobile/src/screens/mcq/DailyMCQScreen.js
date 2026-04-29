@@ -29,6 +29,7 @@ const DailyMCQScreen = ({ navigation }) => {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [secondsUntilOpen, setSecondsUntilOpen] = useState(0);
 
   const qTimerRef = useRef(null);
   const testTimerRef = useRef(null);
@@ -73,6 +74,25 @@ const DailyMCQScreen = ({ navigation }) => {
     startOverallTestTimer();
   };
 
+  // Auto-start timer for locked missions
+  useEffect(() => {
+    let interval;
+    if (isTooEarly && secondsUntilOpen > 0) {
+      interval = setInterval(() => {
+        setSecondsUntilOpen(prev => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            setIsTooEarly(false); // Reset to trigger re-fetch
+            checkTimingAndFetch();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isTooEarly, secondsUntilOpen === 0]);
+
   const startTimePerQTimer = () => {
     if (qTimerRef.current) clearInterval(qTimerRef.current);
     setTimeLeft(timePerQ);
@@ -106,7 +126,14 @@ const DailyMCQScreen = ({ navigation }) => {
       const res = await api.get('/mcq/daily');
       const data = res.data;
       if (data.isAttempted) { setIsFinished(true); return; }
-      if (data.isTooEarly) { setIsTooEarly(true); setWaitInfo({ subject: data.subject, opensAt: data.opensAt }); return; }
+      if (data.isTooEarly) { 
+        setIsTooEarly(true); 
+        setWaitInfo({ subject: data.subject, opensAt: data.opensAt }); 
+        const opensAt = new Date(data.opensAt);
+        const diff = Math.floor((opensAt - new Date()) / 1000);
+        setSecondsUntilOpen(diff > 0 ? diff : 0);
+        return; 
+      }
       if (data.isTooLate) { setIsTooLate(true); return; }
       if (!data.questions || data.questions.length === 0) { Alert.alert('Notice', 'No mission available for now.'); navigation.goBack(); return; }
       setTestId(data._id);
@@ -179,8 +206,37 @@ const DailyMCQScreen = ({ navigation }) => {
       <View style={s.centered}>
         <View style={s.lockIconBg}><Lock color={theme.colors.primary} size={48} /></View>
         <Text style={s.resultTitle}>Mission Locked</Text>
-        <Text style={s.resultSub}>Strategize! This mission opens at {new Date(waitInfo?.opensAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+        <Text style={s.resultSub}>Strategize! This mission opens in {formatTime(secondsUntilOpen)} at {new Date(waitInfo?.opensAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+        
+        <View style={s.autoStartBadge}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <Text style={s.autoStartText}>AUTO-OPENING IN {secondsUntilOpen}s</Text>
+        </View>
+
         <TouchableOpacity style={s.secondaryAction} onPress={() => navigation.goBack()}><Text style={s.secondaryActionText}>Return to Hub</Text></TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+
+  if (isTooLate) return (
+    <SafeAreaView style={s.container}>
+      <View style={s.header}><TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}><ArrowLeft color={theme.colors.text} size={24} /></TouchableOpacity></View>
+      <View style={s.centered}>
+        <View style={[s.lockIconBg, { borderColor: 'rgba(239, 68, 68, 0.1)' }]}><Clock color={theme.colors.error} size={48} /></View>
+        <Text style={s.resultTitle}>Missed Mission</Text>
+        <Text style={s.resultSub}>Sorry, you missed this mission! ⏱️{"\n"}Stay tuned for the next scheduled assessment.</Text>
+        <TouchableOpacity style={s.secondaryAction} onPress={() => navigation.goBack()}><Text style={s.secondaryActionText}>Return to Hub</Text></TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+
+  if (!loading && (!mcqs || mcqs.length === 0)) return (
+    <SafeAreaView style={s.container}>
+      <View style={s.centered}>
+        <AlertTriangle color={theme.colors.primary} size={48} />
+        <Text style={s.resultTitle}>No Mission Found</Text>
+        <Text style={s.resultSub}>There are no active missions available for now. Keep preparing!</Text>
+        <TouchableOpacity style={s.primaryAction} onPress={() => navigation.goBack()}><Text style={s.primaryActionText}>Return Home</Text></TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -225,18 +281,41 @@ const DailyMCQScreen = ({ navigation }) => {
       </View>
       <ScrollView style={s.gameScroll} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInDown.duration(600)} key={currentIndex} style={s.questionContainer}>
-           <View style={s.qBadge}><Target color={theme.colors.primary} size={16} /><Text style={s.qBadgeText}>CURRENT OBJECTIVE</Text></View>
+           <View style={s.qBadgeRow}>
+             <View style={s.qBadge}><Target color={theme.colors.primary} size={16} /><Text style={s.qBadgeText}>{mcqs[0]?.subject || 'OBJECTIVE'}</Text></View>
+             <View style={s.diffBadge}><Text style={s.diffText}>MEDIUM</Text></View>
+           </View>
+           
            <Text style={s.questionText}>{currentQ?.question}</Text>
            <View style={s.optionsContainer}>
              {currentQ?.options?.map((opt, i) => {
                const isSelected = selectedAnswer === opt;
                return (
-                 <TouchableOpacity key={i} activeOpacity={0.8} style={[s.optionCard, isSelected && s.selectedOptionCard]} onPress={() => setSelectedAnswer(opt)}>
+                 <TouchableOpacity 
+                   key={i} 
+                   activeOpacity={0.8} 
+                   style={[s.optionCard, isSelected && s.selectedOptionCard, isSelected && { transform: [{ scale: 1.01 }] }]} 
+                   onPress={() => setSelectedAnswer(opt)}
+                 >
                    <View style={[s.optIndicator, isSelected && s.selectedOptIndicator]}>{isSelected && <View style={s.optDot} />}</View>
                    <Text style={[s.optText, isSelected && s.selectedOptText]}>{opt}</Text>
                  </TouchableOpacity>
                );
              })}
+           </View>
+
+           {/* Question Dots Tracker */}
+           <View style={s.dotsContainer}>
+             {mcqs.map((_, i) => (
+               <View 
+                 key={i} 
+                 style={[
+                   s.dotItem, 
+                   i === currentIndex && s.activeDot,
+                   i < currentIndex && s.completedDot
+                 ]} 
+               />
+             ))}
            </View>
         </Animated.View>
       </ScrollView>
@@ -250,9 +329,9 @@ const DailyMCQScreen = ({ navigation }) => {
 
 const styles = (theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0A0F' }, // Deep space black
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
   loadingText: { color: theme.colors.primary, fontWeight: '900', marginTop: 24, letterSpacing: 2, fontSize: 12 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingVertical: 16 },
   headerCenter: { flex: 1, alignItems: 'center', marginHorizontal: 20 },
   qProgressText: { color: theme.colors.textMuted, fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginBottom: 8 },
   progressBarBg: { height: 6, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 3, width: '100%', overflow: 'hidden' },
@@ -261,12 +340,19 @@ const styles = (theme) => StyleSheet.create({
   timerPillWarning: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
   timerText: { color: theme.colors.primary, fontWeight: '800', fontSize: 13 },
   white: { color: '#fff' },
-  gameScroll: { flex: 1, paddingHorizontal: 24 },
+  gameScroll: { flex: 1, paddingHorizontal: spacing.xl },
   questionContainer: { marginTop: 20 },
-  qBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  qBadgeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  qBadge: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   qBadgeText: { color: theme.colors.primary, fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  diffBadge: { backgroundColor: 'rgba(245, 158, 11, 0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.2)' },
+  diffText: { color: '#f59e0b', fontSize: 10, fontWeight: 'bold' },
   questionText: { color: '#fff', fontSize: 24, fontWeight: '800', lineHeight: 34, marginBottom: 32 },
   optionsContainer: { gap: 14 },
+  dotsContainer: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 40, flexWrap: 'wrap' },
+  dotItem: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.1)' },
+  activeDot: { width: 14, backgroundColor: theme.colors.primary },
+  completedDot: { backgroundColor: 'rgba(99, 91, 255, 0.4)' },
   optionCard: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#16161E', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
   selectedOptionCard: { borderColor: theme.colors.primary, backgroundColor: 'rgba(99, 91, 255, 0.08)' },
   optIndicator: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
@@ -274,13 +360,13 @@ const styles = (theme) => StyleSheet.create({
   optDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.primary },
   optText: { color: theme.colors.textMuted, fontSize: 16, fontWeight: '600', flex: 1 },
   selectedOptText: { color: '#fff', fontWeight: '700' },
-  footer: { padding: 24, backgroundColor: '#0A0A0F', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.03)' },
+  footer: { padding: spacing.xl, backgroundColor: '#0A0A0F', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.03)' },
   footerInfo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 16 },
   testTimerText: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   nextBtn: { backgroundColor: theme.colors.primary, height: 64, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, shadowColor: theme.colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 10 },
   nextBtnText: { color: '#000', fontSize: 16, fontWeight: '900', letterSpacing: 1 },
   btnDisabled: { opacity: 0.4, shadowOpacity: 0 },
-  resultScroll: { padding: 24, alignItems: 'center' },
+  resultScroll: { padding: spacing.xl, alignItems: 'center' },
   trophyContainer: { marginTop: 40, marginBottom: 24 },
   glowCircle: { width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(99, 91, 255, 0.1)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(99, 91, 255, 0.2)' },
   resultTitle: { color: '#fff', fontSize: 32, fontWeight: '900', textAlign: 'center', marginBottom: 12 },
@@ -301,7 +387,9 @@ const styles = (theme) => StyleSheet.create({
   primaryActionText: { color: '#000', fontSize: 16, fontWeight: '900' },
   secondaryAction: { height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   secondaryActionText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  lockIconBg: { width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.03)', alignItems: 'center', justifyContent: 'center', marginBottom: 32, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' }
+  lockIconBg: { width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.03)', alignItems: 'center', justifyContent: 'center', marginBottom: 32, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  autoStartBadge: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 16, marginBottom: 40, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  autoStartText: { color: theme.colors.primary, fontSize: 12, fontWeight: '900', letterSpacing: 1 }
 });
 
 export default DailyMCQScreen;

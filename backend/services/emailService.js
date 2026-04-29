@@ -52,10 +52,17 @@ const sendPrizeWonEmail = async (email, name, rank, amount, type) => {
  */
 const sendOTPEmail = async (email, otp) => {
   const mailOptions = {
-    from: `"JKSSB PrepMaster" <${process.env.EMAIL_USER}>`,
+    from: `"Medx Prep 🔐" <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: `Your Login OTP: ${otp}`,
-    text: `Your OTP for JKSSB PrepMaster is: ${otp}. Valid for 5 minutes.`,
+    subject: `${otp} is your verification code`,
+    html: `
+      <div style="font-family:Arial, sans-serif; max-width:400px; margin:auto; padding:20px; border-radius:15px; background-color:#0a0a0a; color:#ffffff; text-align:center;">
+        <h2 style="color:#635BFF;">Verification Code</h2>
+        <p>Use the code below to sign in. It expires in <b>30 seconds</b>.</p>
+        <h1 style="background:#1C1C26; padding:15px; border-radius:10px; letter-spacing:5px; color:#635BFF;">${otp}</h1>
+        <p style="color:#8E8E9F; font-size:12px;">If you didn't request this, please ignore this email.</p>
+      </div>
+    `,
   };
 
   try {

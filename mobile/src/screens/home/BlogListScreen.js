@@ -101,13 +101,13 @@ const styles = (theme) => StyleSheet.create({
   header: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    padding: spacing.lg,
+    padding: spacing.xl,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border
   },
   backBtn: { marginRight: 12 },
   headerTitle: { color: theme.colors.text, fontSize: 18, fontWeight: 'bold' },
-  listContent: { padding: spacing.lg },
+  listContent: { padding: spacing.xl },
   card: {
     backgroundColor: theme.colors.surface,
     borderRadius: borderRadius.lg,

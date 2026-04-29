@@ -94,8 +94,8 @@ const RegisterScreen = ({ navigation }) => {
               <View style={s.logoBox}>
                 <Shield color="#FFFFFF" size={28} strokeWidth={2.5} />
               </View>
-              <Text style={s.brandName}>AdaptLearn-JKSSB</Text>
-              <Text style={s.brandSlogan}>your ultimate prep partner</Text>
+              <Text style={s.brandName}>Medx Institute</Text>
+              <Text style={s.brandSlogan}>Your Ultimate NEET Partner</Text>
             </View>
 
             <View style={s.tabContainer}>

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Dimensions, Modal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Modal, ActivityIndicator, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Trophy, BookOpen, Clock, ChevronRight, Flame, Award, Moon, Sun, Play, Users, Shield, Calendar, X, Sparkles, ArrowRight } from 'lucide-react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRoute } from '@react-navigation/native';
@@ -8,6 +9,9 @@ import { useTheme } from '../../utils/useTheme';
 import api from '../../utils/api';
 import { spacing, borderRadius } from '../../theme';
 import { toast } from '../../components/Toast';
+import * as Linking from 'expo-linking';
+
+const CURRENT_VERSION = '1.0.0';
 
 const { width } = Dimensions.get('window');
 const isLargeScreen = width > 768;
@@ -30,17 +34,18 @@ const HomeScreen = ({ navigation }) => {
 
   const [dailyMission, setDailyMission] = React.useState(null);
   const [timeLeft, setTimeLeft] = React.useState('');
+  const [isAutoStarting, setIsAutoStarting] = React.useState(false);
+  const [appConfig, setAppConfig] = React.useState(null);
 
   // 1. Fetch on Mount & Focus (only if not already finished)
   React.useEffect(() => {
+    fetchDailyMission();
+    fetchAppConfig();
     const unsubscribe = navigation.addListener('focus', () => {
       fetchDailyMission();
     });
-    fetchDailyMission();
     return unsubscribe;
   }, [navigation, dailyMission?.isAttempted]);
-
-  const [isAutoStarting, setIsAutoStarting] = React.useState(false);
 
   // 2. Countdown Timer (Local only, no API calls)
   React.useEffect(() => {
@@ -78,6 +83,15 @@ const HomeScreen = ({ navigation }) => {
 
     return () => clearInterval(timer);
   }, [dailyMission, navigation]);
+
+  const fetchAppConfig = async () => {
+    try {
+      const res = await api.get('/config/version');
+      if (res.data?.success) setAppConfig(res.data.data);
+    } catch (e) {
+      console.log('Update check failed');
+    }
+  };
 
   const fetchDailyMission = async () => {
     // If we already know it's attempted, don't bother the server!
@@ -127,112 +141,131 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={s.container}>
-      <ScrollView style={s.content} showsVerticalScrollIndicator={false}>
-        {/* HEADER */}
-        <View style={s.header}>
-          <View style={s.headerLeft}>
-            <View style={s.avatarBox}>
-              <Text style={s.avatarText}>{initials}</Text>
-            </View>
-            <View style={s.greetingBox}>
-              <Text style={s.greetingTitle}>Good morning,{'\n'}{user?.name?.split(' ')[0] || (isMasterAdmin ? 'Admin' : 'Student')}</Text>
-              <Text style={s.greetingDate}>{todayStr}</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={s.iconButton} onPress={toggleTheme}>
-            {currentTheme === 'light' ? <Moon color={theme.colors.textMuted} size={20} /> : <Sun color={theme.colors.textMuted} size={20} />}
-          </TouchableOpacity>
-        </View>
-
-        {/* OVERVIEW SECTION */}
-        <Text style={s.sectionHeaderTitle}>OVERVIEW</Text>
-        <View style={s.overviewGrid}>
-          <View style={s.overviewCard}>
-            <Text style={s.overviewValue}>{dailyMission ? 1 : 0}</Text>
-            <Text style={s.overviewLabel}>Missions{'\n'}today</Text>
-          </View>
-          <View style={s.overviewCard}>
-            <Text style={s.overviewValue}>{user?.streak || 0}</Text>
-            <Text style={s.overviewLabel}>Day{'\n'}streak</Text>
-          </View>
-        </View>
-
-        {/* RECENT ACTIVITY SECTION */}
-        <Text style={s.sectionHeaderTitle}>RECENT ACTIVITY</Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         
-        {isMasterAdmin && (
-          <TouchableOpacity style={s.activityRow} onPress={() => navigation.navigate('Admin')}>
+        {/* Update Banner */}
+        {appConfig && appConfig.latestVersion !== CURRENT_VERSION && (
+          <TouchableOpacity 
+            style={s.updateBanner} 
+            onPress={() => Linking.openURL(appConfig.downloadUrl)}
+          >
+            <View style={s.updateIcon}>
+              <Sparkles color="#fff" size={20} />
+            </View>
+            <View style={{flex: 1, marginLeft: 12}}>
+              <Text style={s.updateTitle}>Update Available (v{appConfig.latestVersion})</Text>
+              <Text style={s.updateMsg}>{appConfig.updateMessage || 'A newer version is ready for download!'}</Text>
+            </View>
+            <ArrowRight color={theme.colors.primary} size={20} />
+          </TouchableOpacity>
+        )}
+
+        <View style={s.content}>
+          {/* HEADER */}
+          <View style={s.header}>
+            <View style={s.headerLeft}>
+              <View style={s.avatarBox}>
+                <Text style={s.avatarText}>{initials}</Text>
+              </View>
+              <View style={s.greetingBox}>
+                <Text style={s.greetingTitle}>Good morning,{'\n'}{user?.name?.split(' ')[0] || (isMasterAdmin ? 'Admin' : 'Student')}</Text>
+                <Text style={s.greetingDate}>{todayStr}</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={s.iconButton} onPress={toggleTheme}>
+              {currentTheme === 'light' ? <Moon color={theme.colors.textMuted} size={20} /> : <Sun color={theme.colors.textMuted} size={20} />}
+            </TouchableOpacity>
+          </View>
+
+          {/* OVERVIEW SECTION */}
+          <Text style={s.sectionHeaderTitle}>OVERVIEW</Text>
+          <View style={s.overviewGrid}>
+            <View style={s.overviewCard}>
+              <Text style={s.overviewValue}>{dailyMission ? 1 : 0}</Text>
+              <Text style={s.overviewLabel}>Missions{'\n'}today</Text>
+            </View>
+            <View style={s.overviewCard}>
+              <Text style={s.overviewValue}>{user?.streak || 0}</Text>
+              <Text style={s.overviewLabel}>Day{'\n'}streak</Text>
+            </View>
+          </View>
+
+          {/* RECENT ACTIVITY SECTION */}
+          <Text style={s.sectionHeaderTitle}>RECENT ACTIVITY</Text>
+          
+          {isMasterAdmin && (
+            <TouchableOpacity style={s.activityRow} onPress={() => navigation.navigate('Admin')}>
+              <View style={s.activityIconBox}>
+                <Shield color={theme.colors.primary} size={20} />
+              </View>
+              <View style={s.activityInfo}>
+                <Text style={s.activityTitle}>Admin Dashboard</Text>
+                <Text style={s.activitySub}>Manage platform</Text>
+              </View>
+              <View style={[s.badge, { backgroundColor: `${theme.colors.primary}20` }]}>
+                <Text style={[s.badgeText, { color: theme.colors.primary }]}>Active</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity 
+            style={s.activityRow} 
+            onPress={handleStartMission}
+            disabled={!dailyMission || (status !== 'LIVE' && !isAutoStarting) || dailyMission?.isAttempted}
+          >
             <View style={s.activityIconBox}>
-              <Shield color={theme.colors.primary} size={20} />
+              <BookOpen color={theme.colors.primary} size={20} />
             </View>
             <View style={s.activityInfo}>
-              <Text style={s.activityTitle}>Admin Dashboard</Text>
-              <Text style={s.activitySub}>Manage platform</Text>
+              <Text style={s.activityTitle}>{dailyMission ? dailyMission.subject : 'No Mission'}</Text>
+              <Text style={s.activitySub}>
+                {dailyMission?.isAttempted ? 'Completed successfully' :
+                 status === 'LIVE' ? 'Ready to start' :
+                 status === 'UPCOMING' ? timeLeft : 'Check back tomorrow'}
+              </Text>
+            </View>
+            <View style={[s.badge, 
+              dailyMission?.isAttempted ? s.badgeDone :
+              (status === 'LIVE' || isAutoStarting) ? s.badgeActive : s.badgeLate
+            ]}>
+              <Text style={[s.badgeText, 
+                dailyMission?.isAttempted ? s.badgeTextDone :
+                (status === 'LIVE' || isAutoStarting) ? s.badgeTextActive : s.badgeTextLate
+              ]}>
+                {dailyMission?.isAttempted ? 'Done' :
+                 (status === 'LIVE' || isAutoStarting) ? 'Active' : 'Wait'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={s.activityRow} onPress={() => navigation.navigate('Blogs')}>
+            <View style={s.activityIconBox}>
+              <Users color={theme.colors.primary} size={20} />
+            </View>
+            <View style={s.activityInfo}>
+              <Text style={s.activityTitle}>Daily News Update</Text>
+              <Text style={s.activitySub}>Latest NEET medical updates</Text>
             </View>
             <View style={[s.badge, { backgroundColor: `${theme.colors.primary}20` }]}>
-              <Text style={[s.badgeText, { color: theme.colors.primary }]}>Active</Text>
+               <Text style={[s.badgeText, { color: theme.colors.primary }]}>New</Text>
             </View>
           </TouchableOpacity>
-        )}
 
-        <TouchableOpacity 
-          style={s.activityRow} 
-          onPress={handleStartMission}
-          disabled={!dailyMission || (status !== 'LIVE' && !isAutoStarting) || dailyMission?.isAttempted}
-        >
-          <View style={s.activityIconBox}>
-            <BookOpen color={theme.colors.primary} size={20} />
-          </View>
-          <View style={s.activityInfo}>
-            <Text style={s.activityTitle}>{dailyMission ? dailyMission.subject : 'No Mission'}</Text>
-            <Text style={s.activitySub}>
-              {dailyMission?.isAttempted ? 'Completed successfully' :
-               status === 'LIVE' ? 'Ready to start' :
-               status === 'UPCOMING' ? timeLeft : 'Check back tomorrow'}
-            </Text>
-          </View>
-          <View style={[s.badge, 
-            dailyMission?.isAttempted ? s.badgeDone :
-            (status === 'LIVE' || isAutoStarting) ? s.badgeActive : s.badgeLate
-          ]}>
-            <Text style={[s.badgeText, 
-              dailyMission?.isAttempted ? s.badgeTextDone :
-              (status === 'LIVE' || isAutoStarting) ? s.badgeTextActive : s.badgeTextLate
-            ]}>
-              {dailyMission?.isAttempted ? 'Done' :
-               (status === 'LIVE' || isAutoStarting) ? 'Active' : 'Wait'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={s.activityRow} onPress={() => navigation.navigate('Blogs')}>
-          <View style={s.activityIconBox}>
-            <Users color={theme.colors.primary} size={20} />
-          </View>
-          <View style={s.activityInfo}>
-            <Text style={s.activityTitle}>Daily News Update</Text>
-            <Text style={s.activitySub}>Latest JKSSB updates</Text>
-          </View>
-          <View style={[s.badge, { backgroundColor: `${theme.colors.primary}20` }]}>
-             <Text style={[s.badgeText, { color: theme.colors.primary }]}>New</Text>
-          </View>
-        </TouchableOpacity>
-
-        {!isMasterAdmin && (
-          <TouchableOpacity style={s.activityRow} onPress={() => navigation.navigate('Ranks')}>
-            <View style={s.activityIconBox}>
-              <Trophy color={theme.colors.primary} size={20} />
-            </View>
-            <View style={s.activityInfo}>
-              <Text style={s.activityTitle}>Global Leaderboard</Text>
-              <Text style={s.activitySub}>View your ranking</Text>
-            </View>
-            <View style={[s.badge, { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
-               <Text style={[s.badgeText, { color: theme.colors.textMuted }]}>View</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-
+          {!isMasterAdmin && (
+            <TouchableOpacity style={s.activityRow} onPress={() => navigation.navigate('Ranks')}>
+              <View style={s.activityIconBox}>
+                <Trophy color={theme.colors.primary} size={20} />
+              </View>
+              <View style={s.activityInfo}>
+                <Text style={s.activityTitle}>Global Leaderboard</Text>
+                <Text style={s.activitySub}>View your ranking</Text>
+              </View>
+              <View style={[s.badge, { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
+                 <Text style={[s.badgeText, { color: theme.colors.textMuted }]}>View</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
       </ScrollView>
 
       {/* Welcome Onboarding Modal */}
@@ -275,7 +308,41 @@ const styles = (theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background, alignItems: isLargeScreen ? 'center' : 'stretch' },
   content: { flex: 1, padding: spacing.xl, width: isLargeScreen ? 600 : '100%', maxWidth: 800 },
   
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40 },
+  header: {
+    padding: spacing.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 40
+  },
+  updateBanner: {
+    margin: spacing.lg,
+    padding: spacing.md,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  updateIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#6366F1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  updateTitle: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  updateMsg: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   avatarBox: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },

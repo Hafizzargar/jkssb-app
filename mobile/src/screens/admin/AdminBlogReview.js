@@ -12,7 +12,7 @@ import { useTheme } from '../../utils/useTheme';
 import { spacing, borderRadius } from '../../theme';
 import ConfirmModal from '../../components/ConfirmModal';
 
-const EXAM_SUBJECTS = ['JKSSB', 'NEET', 'JEE', 'UPSC', 'BANKING', 'GENERAL'];
+const EXAM_SUBJECTS = ['NEET', 'AIIMS', 'JIPMER', 'BIOLOGY', 'PHYSICS', 'CHEMISTRY', 'GENERAL'];
 
 const AdminBlogReview = ({ navigation }) => {
   const theme = useTheme();
@@ -24,11 +24,11 @@ const AdminBlogReview = ({ navigation }) => {
   // Manual / Edit modal
   const [showManual, setShowManual] = useState(false);
   const [editingBlog, setEditingBlog] = useState(null);
-  const [manualBlog, setManualBlog] = useState({ title: '', content: '', category: 'JKSSB', image: '' });
+  const [manualBlog, setManualBlog] = useState({ title: '', content: '', category: 'NEET', image: '' });
 
   // AI subject picker modal
   const [showSubjectPicker, setShowSubjectPicker] = useState(false);
-  const [selectedSubject, setSelectedSubject] = useState('JKSSB');
+  const [selectedSubject, setSelectedSubject] = useState('NEET');
 
   // Delete confirm modal
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -140,9 +140,9 @@ const AdminBlogReview = ({ navigation }) => {
 
   const getCategoryColor = (cat) => {
     const map = {
-      JKSSB: '#6366f1', NEET: '#10b981', JEE: '#f59e0b',
-      UPSC: '#3b82f6', BANKING: '#8b5cf6', GENERAL: '#64748b',
-      'J&K': '#6366f1', INDIA: '#f97316', WORLD: '#06b6d4', OFFICIAL: '#ef4444'
+      NEET: '#10b981', AIIMS: '#3b82f6', JIPMER: '#8b5cf6',
+      BIOLOGY: '#10b981', PHYSICS: '#f59e0b', CHEMISTRY: '#ef4444',
+      GENERAL: '#64748b', JKSSB: '#6366f1'
     };
     return map[cat] || '#64748b';
   };

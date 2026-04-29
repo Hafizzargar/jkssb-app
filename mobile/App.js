@@ -17,8 +17,8 @@ function MainApp() {
   const { user } = useSelector((state) => state.auth);
   const activeTheme = themes[theme] || themes.dark;
 
-  // Initialize Push Notifications
-  useNotifications(user?.id || user?._id);
+  // Initialize Push Notifications (DISABLED to prevent SDK 53 crashes)
+  // useNotifications(user?.id || user?._id);
 
   React.useEffect(() => {
     // Simulate loading

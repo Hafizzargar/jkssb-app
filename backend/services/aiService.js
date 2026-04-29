@@ -9,12 +9,19 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
  * Validates the structure of AI-generated MCQs
  */
 const validateMCQs = (questions) => {
-  if (!Array.isArray(questions)) {
-    console.log('⚠️ Gemini output is not an array:', questions);
+  let list = questions;
+  
+  // Handle case where Gemini wraps the array in an object like { "questions": [...] }
+  if (!Array.isArray(list) && typeof list === 'object' && list !== null) {
+    list = list.questions || list.data || list.mcqs || Object.values(list).find(val => Array.isArray(val));
+  }
+
+  if (!Array.isArray(list)) {
+    console.log('⚠️ Gemini output is not an array:', list);
     return [];
   }
   
-  return questions.map(q => {
+  return list.map(q => {
     // Normalize fields
     const question = q.question || q.text || q.q;
     const options = q.options || q.choices || q.answers;
@@ -52,8 +59,9 @@ const generateMCQs = async (subject, difficulty = 'MEDIUM', count = 20) => {
       model: "gemini-flash-latest",
       generationConfig: { responseMimeType: "application/json" }
     });
-    const prompt = `Generate exactly ${count} high-quality MCQs for the JKSSB exam. 
+    const prompt = `Generate exactly ${count} high-quality MCQs for the NEET (National Eligibility cum Entrance Test) exam for Medx Institute. 
                     Subject: ${subject}, Difficulty: ${difficulty}. 
+                    Focus on Biology, Chemistry, or Physics as per the subject.
                     Output MUST be a valid JSON array of objects. 
                     Structure:
                     [{ "question": "...", "options": ["A)...", "B)...", "C)...", "D)..."], "correct": "A", "explanation": "..." }]
@@ -108,12 +116,12 @@ const generateBlogs = async (subject = 'JKSSB') => {
       model: "gemini-flash-latest",
       generationConfig: { responseMimeType: "application/json" }
     });
-    const prompt = `Generate 3 engaging news blog posts for students preparing for ${subject} exams.
-                    Write about recent developments, tips, exam updates, and current affairs related to ${subject}.
-                    For each post include a catchy title, detailed content (at least 3 paragraphs), and a relevant high-quality Unsplash image URL.
-                    IMPORTANT: Use exactly "${subject}" as the category for ALL 3 posts.
+    const prompt = `Generate 3 engaging news blog posts for Medx Institute students preparing for NEET medical exams.
+                    Write about recent developments, NEET preparation tips, exam updates, and medical field current affairs.
+                    For each post include a catchy title, detailed content (at least 3 paragraphs), and a relevant high-quality medical/educational Unsplash image URL.
+                    IMPORTANT: Use exactly "NEET" as the category for ALL 3 posts.
                     Format strictly as a valid JSON array with NO extra text:
-                    [{ "title": "...", "content": "...", "category": "${subject}", "image": "https://images.unsplash.com/photo-XXXXXXXXXX?auto=format&fit=crop&q=80&w=1000" }]`;
+                    [{ "title": "...", "content": "...", "category": "NEET", "image": "https://images.unsplash.com/photo-XXXXXXXXXX?auto=format&fit=crop&q=80&w=1000" }]`;
 
     const result = await model.generateContent(prompt);
     const text = result.response.text();
@@ -150,4 +158,67 @@ const refineTitle = async (oldTitle, content) => {
   }
 };
 
-module.exports = { generateMCQs, generateBlogs, refineTitle };
+const ExamPattern = require('../models/ExamPattern');
+const mongoose = require('mongoose');
+
+/**
+ * Generates a full NEET Mock distribution
+ */
+const generateNeetMock = async (mode = 'MINI', difficulty = 'MEDIUM', customSections = null) => {
+  let sections = customSections || [];
+  let total = 0;
+  let label = mode;
+
+  // 1. Try to fetch from DB if it's an ID and no custom sections provided
+  if (!customSections && mongoose.Types.ObjectId.isValid(mode)) {
+    const pattern = await ExamPattern.findById(mode);
+    if (pattern) {
+      sections = pattern.sections;
+      total = pattern.total;
+      label = pattern.label;
+    }
+  }
+
+  // 2. Fallback to static patterns if not found or not an ID
+  if (sections.length === 0) {
+    const staticPatterns = {
+      MINI: [{ name: 'Physics', count: 10 }, { name: 'Chemistry', count: 10 }, { name: 'Biology', count: 20 }],
+      MEDIUM: [{ name: 'Physics', count: 20 }, { name: 'Chemistry', count: 20 }, { name: 'Biology', count: 40 }],
+      FULL: [{ name: 'Physics', count: 45 }, { name: 'Chemistry', count: 45 }, { name: 'Biology', count: 90 }]
+    };
+    const p = staticPatterns[mode.toUpperCase()] || staticPatterns.MINI;
+    sections = p;
+  }
+
+  // Ensure total is calculated correctly - use Number() to avoid string concatenation
+  total = sections.reduce((acc, s) => acc + (Number(s.count) || 0), 0);
+
+  console.log(`♊ Gemini: Generating NEET Mock (${label}) with ${total} questions...`);
+  
+  try {
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-flash-latest",
+      generationConfig: { responseMimeType: "application/json" }
+    });
+
+    const prompt = `Generate ${total} high-quality NEET MCQs for Medx Institute.
+                    Distribution:
+                    ${sections.map(s => `- ${s.name}: ${s.count} questions`).join('\n')}
+                    
+                    Difficulty: ${difficulty}.
+                    
+                    Format strictly as a valid JSON array with NO extra text:
+                    [{ "question": "[Subject] text", "options": ["A) opt", "B) opt", "C) opt", "D) opt"], "correct": "A", "explanation": "..." }]`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const cleanedJson = text.replace(/```json|```/gi, '').trim();
+    const questionsData = JSON.parse(cleanedJson);
+    return validateMCQs(questionsData);
+  } catch (error) {
+    console.error('❌ Gemini Mock Error:', error.message);
+    return [];
+  }
+};
+
+module.exports = { generateMCQs, generateBlogs, refineTitle, generateNeetMock };

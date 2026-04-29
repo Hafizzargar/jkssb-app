@@ -41,7 +41,7 @@
       ]
     ],
     "notification": {
-      "icon": "./assets/images/notification-icon.png",
+      "icon": "./assets/images/icon.png",
       "color": "#FF231F7C"
     },
     "experiments": {

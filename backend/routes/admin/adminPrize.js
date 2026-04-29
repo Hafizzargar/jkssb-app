@@ -19,10 +19,13 @@ router.get('/config', adminOnly, async (req, res) => {
 // UPDATE prize amounts
 router.put('/config', adminOnly, async (req, res) => {
   try {
-    const { type, rank1, rank2, rank3 } = req.body;
+    const { type, modelType, entryFee, platformCommission, rank1, rank2, rank3 } = req.body;
     const updatedPrize = await Prize.findOneAndUpdate(
       { type },
       { 
+        modelType,
+        entryFee,
+        platformCommission,
         amounts: { rank1, rank2, rank3 }, 
         updatedBy: req.admin._id, 
         updatedAt: new Date() 

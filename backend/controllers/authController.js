@@ -65,7 +65,7 @@ exports.register = async (req, res) => {
 };
 
 /**
- * Handle Login with Password
+ * Handle Login with Password + 2FA
  */
 exports.login = async (req, res) => {
   try {
@@ -89,22 +89,22 @@ exports.login = async (req, res) => {
       });
     }
 
-    // SETUP SESSION
-    req.session.userId = user._id;
-    req.session.isAuth = true;
-    req.session.email = user.email;
+    // 2FA: Generate OTP instead of logging in immediately
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiry = new Date(Date.now() + 30 * 1000); // 30 seconds
+
+    user.otp = otp;
+    user.otpExpiry = otpExpiry;
+    await user.save();
+
+    // Send Email
+    const { sendOTPEmail } = require('../services/emailService');
+    await sendOTPEmail(email, otp);
 
     res.json({
-      message: 'Login successful',
-      user: {
-        id: user._id,
-        email: user.email,
-        username: user.username,
-        name: user.name,
-        isRegistered: user.isRegistered,
-        status: user.status,
-        subjectPerformance: user.subjectPerformance || []
-      }
+      success: true,
+      twoFactorRequired: true,
+      message: 'Password verified. Please enter the 6-digit code sent to your email.'
     });
   } catch (error) {
     console.error('❌ Login Error:', error);
@@ -252,5 +252,113 @@ exports.updateProfile = async (req, res) => {
   } catch (error) {
     console.error('❌ Update Profile Error:', error);
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+/**
+ * Send Registration OTP (30s Expiry)
+ */
+exports.sendRegistrationOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+
+    const existing = await User.findOne({ email, isRegistered: true });
+    if (existing) {
+      return res.status(400).json({ message: 'Email already registered. Please login.' });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiry = new Date(Date.now() + 30 * 1000);
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = new User({ email, password: 'temp', isRegistered: false });
+    }
+    
+    user.otp = otp;
+    user.otpExpiry = otpExpiry;
+    await user.save();
+
+    const { sendOTPEmail } = require('../services/emailService');
+    await sendOTPEmail(email, otp);
+
+    res.json({ success: true, message: 'Verification code sent!' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * Verify Registration OTP
+ */
+exports.verifyRegistrationOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await User.findOne({ email, isRegistered: false });
+    if (!user) return res.status(404).json({ message: 'Registration session not found.' });
+
+    if (user.otp !== otp || new Date() > user.otpExpiry) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    user.otp = undefined;
+    user.otpExpiry = undefined;
+    await user.save();
+
+    res.json({ success: true, message: 'Email verified!' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * Send Login OTP (30s Expiry)
+ */
+exports.sendLoginOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email, isRegistered: true });
+    if (!user) return res.status(404).json({ message: 'User not found. Register first.' });
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiry = new Date(Date.now() + 30 * 1000);
+
+    user.otp = otp;
+    user.otpExpiry = otpExpiry;
+    await user.save();
+
+    const { sendOTPEmail } = require('../services/emailService');
+    await sendOTPEmail(email, otp);
+
+    res.json({ success: true, message: 'Login OTP sent!' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * Verify Login OTP
+ */
+exports.verifyLoginOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await User.findOne({ email, isRegistered: true });
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    if (user.otp !== otp || new Date() > user.otpExpiry) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    user.otp = undefined;
+    user.otpExpiry = undefined;
+    await user.save();
+
+    req.session.userId = user._id;
+    req.session.isAuth = true;
+    req.session.email = user.email;
+
+    res.json({ success: true, user });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };

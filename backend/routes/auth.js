@@ -9,6 +9,10 @@ router.get('/check', authController.checkAuth);
 router.post('/logout', authController.logout);
 router.post('/push-token', authController.savePushToken);
 router.post('/update-profile', authController.updateProfile);
+router.post('/send-otp', authController.sendLoginOTP);
+router.post('/verify-otp', authController.verifyLoginOTP);
+router.post('/send-registration-otp', authController.sendRegistrationOTP);
+router.post('/verify-registration-otp', authController.verifyRegistrationOTP);
 
 // Admin Routes
 router.get('/pending-users', adminOnly, authController.getPendingUsers);

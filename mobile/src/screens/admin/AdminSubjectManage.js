@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, TextInput, Modal, Switch, Platform } from 'react-native';
-import { ChevronLeft, Plus, Trash2, BookOpen, Layers, Edit2 } from 'lucide-react-native';
+import { ChevronLeft, Plus, Trash2, BookOpen, Layers, Edit2, Sparkles } from 'lucide-react-native';
 import api from '../../utils/api';
 import { useTheme } from '../../utils/useTheme';
 import { spacing, borderRadius } from '../../theme';
@@ -19,14 +19,41 @@ const AdminSubjectManage = ({ navigation }) => {
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [subjectToDelete, setSubjectToDelete] = useState(null);
 
-  useEffect(() => {
-    fetchSubjects();
-  }, []);
+  const [activeTab, setActiveTab] = useState('subjects'); // 'subjects' | 'modes'
+  const [testModes, setTestModes] = useState([]);
+
+  const [showModeModal, setShowModeModal] = useState(false);
+  const [editingMode, setEditingMode] = useState(null);
+
+  const handleOpenEditMode = (mode) => {
+    setEditingMode(JSON.parse(JSON.stringify(mode))); // Deep clone
+    setShowModeModal(true);
+  };
+
+  const handleOpenAdd = () => {
+    setEditingSubject(null);
+    setFormData({ name: '', code: '', description: '' });
+    setShowModal(true);
+  };
+
+  const handleOpenAddPattern = () => {
+    setEditingMode({
+      label: '',
+      total: 0,
+      duration: 180,
+      sections: [
+        { name: 'Physics', count: 0 },
+        { name: 'Chemistry', count: 0 },
+        { name: 'Biology', count: 0 }
+      ]
+    });
+    setShowModeModal(true);
+  };
 
   const fetchSubjects = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/api/admin/subject');
+      const res = await api.get('/admin/subject');
       setSubjects(res.data);
     } catch (error) {
       Alert.alert('Error', 'Failed to fetch subjects');
@@ -35,10 +62,56 @@ const AdminSubjectManage = ({ navigation }) => {
     }
   };
 
-  const handleOpenAdd = () => {
-    setEditingSubject(null);
-    setFormData({ name: '', code: '', description: '' });
-    setShowModal(true);
+  const fetchPatterns = async () => {
+    try {
+      const res = await api.get('/admin/pattern');
+      setTestModes(res.data);
+    } catch (error) {
+      // Failed silently for clean UI
+    }
+  };
+
+  useEffect(() => {
+    fetchSubjects();
+    fetchPatterns();
+  }, []);
+
+  const handleUpdateMode = async () => {
+    if (!editingMode.label) return Alert.alert('Error', 'Please provide a pattern name');
+    const total = editingMode.sections.reduce((acc, s) => acc + (parseInt(s.count) || 0), 0);
+    const modeData = { ...editingMode, total };
+    
+    try {
+      setLoading(true);
+      if (editingMode._id) {
+        await api.put(`/admin/pattern/${editingMode._id}`, modeData);
+      } else {
+        await api.post('/admin/pattern', modeData);
+      }
+      setShowModeModal(false);
+      fetchPatterns();
+      Alert.alert('Success', 'Exam pattern saved successfully');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save pattern');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleModeSectionChange = (index, value) => {
+    const newSections = [...editingMode.sections];
+    newSections[index].count = parseInt(value) || 0;
+    setEditingMode({ ...editingMode, sections: newSections });
+  };
+
+  const handleDeletePattern = async (id) => {
+    try {
+      await api.delete(`/admin/pattern/${id}`);
+      fetchPatterns();
+      Alert.alert('Deleted', 'Pattern removed');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete pattern');
+    }
   };
 
   const handleOpenEdit = (subject) => {
@@ -52,10 +125,10 @@ const AdminSubjectManage = ({ navigation }) => {
     try {
       setLoading(true);
       if (editingSubject) {
-        await api.put(`/api/admin/subject/${editingSubject._id}`, formData);
+        await api.put(`/admin/subject/${editingSubject._id}`, formData);
         Alert.alert('Success', 'Subject updated successfully');
       } else {
-        await api.post('/api/admin/subject', formData);
+        await api.post('/admin/subject', formData);
         Alert.alert('Success', 'Subject added successfully');
       }
       setShowModal(false);
@@ -70,7 +143,7 @@ const AdminSubjectManage = ({ navigation }) => {
 
   const handleToggle = async (id) => {
     try {
-      await api.patch(`/api/admin/subject/toggle/${id}`);
+      await api.patch(`/admin/subject/toggle/${id}`);
       setSubjects(subjects.map(s => s._id === id ? { ...s, isActive: !s.isActive } : s));
     } catch (error) {
       Alert.alert('Error', 'Failed to toggle status');
@@ -85,7 +158,7 @@ const AdminSubjectManage = ({ navigation }) => {
   const confirmDelete = async () => {
     if (!subjectToDelete) return;
     try {
-      await api.delete(`/api/admin/subject/${subjectToDelete}`);
+      await api.delete(`/admin/subject/${subjectToDelete}`);
       setSubjects(prev => prev.filter(s => s._id !== subjectToDelete));
       Alert.alert('Deleted', 'Subject has been removed.');
     } catch (error) {
@@ -104,63 +177,137 @@ const AdminSubjectManage = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <ChevronLeft color={theme.colors.text} size={24} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>Subject Management</Text>
-          <Text style={s.headerSub}>{subjects.length} Categories Configured</Text>
-        </View>
-        <TouchableOpacity style={s.plusBtn} onPress={handleOpenAdd}>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity 
+          style={s.plusBtn} 
+          onPress={activeTab === 'subjects' ? handleOpenAdd : handleOpenAddPattern}
+        >
           <Plus color="#000" size={20} />
         </TouchableOpacity>
       </View>
 
+      <View style={s.tabBar}>
+        <TouchableOpacity 
+          style={[s.tab, activeTab === 'subjects' && s.activeTab]} 
+          onPress={() => setActiveTab('subjects')}
+        >
+          <Text style={[s.tabText, activeTab === 'subjects' && s.activeTabText]}>Subjects</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[s.tab, activeTab === 'modes' && s.activeTab]} 
+          onPress={() => setActiveTab('modes')}
+        >
+          <Text style={[s.tabText, activeTab === 'modes' && s.activeTabText]}>Test Patterns</Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView style={s.content} showsVerticalScrollIndicator={false}>
-        {loading && subjects.length === 0 ? (
-          <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 40 }} />
-        ) : subjects.length === 0 ? (
-          <View style={s.emptyState}>
-            <Layers color={theme.colors.textMuted} size={48} />
-            <Text style={s.emptyText}>No subjects created yet</Text>
-            <TouchableOpacity style={s.addBtnLarge} onPress={handleOpenAdd}>
-              <Text style={s.addBtnLargeText}>Add Your First Subject</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          subjects.map((sub) => (
-            <View key={sub._id} style={[s.card, !sub.isActive && s.cardDisabled]}>
-              <View style={s.cardInfo}>
-                <View style={[s.iconBox, { backgroundColor: sub.isActive ? `${theme.colors.primary}20` : `${theme.colors.textMuted}20` }]}>
-                  <BookOpen color={sub.isActive ? theme.colors.primary : theme.colors.textMuted} size={20} />
+        {activeTab === 'subjects' ? (
+          loading && subjects.length === 0 ? (
+            <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 40 }} />
+          ) : subjects.length === 0 ? (
+            <View style={s.emptyState}>
+              <Layers color={theme.colors.textMuted} size={48} />
+              <Text style={s.emptyText}>No subjects created yet</Text>
+              <TouchableOpacity style={s.addBtnLarge} onPress={handleOpenAdd}>
+                <Text style={s.addBtnLargeText}>Add Your First Subject</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              {subjects.map((sub) => (
+                <View key={sub._id} style={[s.card, !sub.isActive && s.cardDisabled]}>
+                  <View style={s.cardInfo}>
+                    <View style={[s.iconBox, { backgroundColor: sub.isActive ? `${theme.colors.primary}20` : `${theme.colors.textMuted}20` }]}>
+                      <BookOpen color={sub.isActive ? theme.colors.primary : theme.colors.textMuted} size={20} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={s.titleRow}>
+                        <Text style={s.cardName}>{sub.name}</Text>
+                        <View style={s.codeBadge}>
+                          <Text style={s.codeText}>{sub.code}</Text>
+                        </View>
+                      </View>
+                      <Text style={s.cardDesc} numberOfLines={1}>{sub.description || 'No description provided'}</Text>
+                    </View>
+                    <TouchableOpacity style={s.editBtn} onPress={() => handleOpenEdit(sub)}>
+                      <Edit2 color={theme.colors.textMuted} size={18} />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <View style={s.cardActions}>
+                    <View style={s.toggleBox}>
+                      <Text style={s.toggleLabel}>{sub.isActive ? 'Active' : 'Disabled'}</Text>
+                      <Switch 
+                        value={sub.isActive} 
+                        onValueChange={() => handleToggle(sub._id)}
+                        trackColor={{ false: '#767577', true: theme.colors.primary }}
+                        thumbColor={sub.isActive ? '#fff' : '#f4f3f4'}
+                      />
+                    </View>
+                    <TouchableOpacity style={s.deleteBtn} onPress={() => handleDelete(sub._id)}>
+                      <Trash2 color={theme.colors.error} size={20} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <View style={s.titleRow}>
-                    <Text style={s.cardName}>{sub.name}</Text>
-                    <View style={s.codeBadge}>
-                      <Text style={s.codeText}>{sub.code}</Text>
+              ))}
+              <TouchableOpacity 
+                style={[s.modeCard, s.modeCardAdd, { marginTop: 10 }]} 
+                onPress={handleOpenAdd}
+              >
+                <Plus color={theme.colors.primary} size={24} />
+                <Text style={s.modeAddText}>Add New Subject</Text>
+                <Text style={s.modeAddSub}>Define a new category for MCQs</Text>
+              </TouchableOpacity>
+            </>
+          )
+        ) : (
+          /* Test Modes Content */
+          <>
+            {testModes.map((mode) => (
+              <View key={mode._id || mode.id} style={s.modeCard}>
+                <View style={s.modeHeader}>
+                  <Sparkles color={theme.colors.primary} size={20} />
+                  <TouchableOpacity onPress={() => handleDeletePattern(mode._id)} style={s.modeDeleteBtn}>
+                    <Trash2 color={theme.colors.error} size={16} />
+                  </TouchableOpacity>
+                  <Text style={s.modeTitle} numberOfLines={1}>{mode.label}</Text>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <View style={[s.totalBadge, { backgroundColor: 'rgba(52, 211, 153, 0.1)' }]}>
+                      <Text style={[s.totalText, { color: '#34d399' }]}>{mode.duration} Min</Text>
+                    </View>
+                    <View style={s.totalBadge}>
+                      <Text style={s.totalText}>{mode.total} Qs</Text>
                     </View>
                   </View>
-                  <Text style={s.cardDesc} numberOfLines={1}>{sub.description || 'No description provided'}</Text>
                 </View>
-                <TouchableOpacity style={s.editBtn} onPress={() => handleOpenEdit(sub)}>
-                  <Edit2 color={theme.colors.textMuted} size={18} />
+                
+                <View style={s.modeDistribution}>
+                  {mode.sections.map((sec, si) => (
+                    <View key={si} style={s.distItem}>
+                      <Text style={s.distName}>{sec.name}</Text>
+                      <View style={s.distLine} />
+                      <Text style={s.distCount}>{sec.count}</Text>
+                    </View>
+                  ))}
+                </View>
+                
+                <TouchableOpacity style={s.modeEditBtn} onPress={() => handleOpenEditMode(mode)}>
+                  <Edit2 color={theme.colors.primary} size={16} />
+                  <Text style={s.modeEditText}>Edit Distribution</Text>
                 </TouchableOpacity>
               </View>
-              
-              <View style={s.cardActions}>
-                <View style={s.toggleBox}>
-                  <Text style={s.toggleLabel}>{sub.isActive ? 'Active' : 'Disabled'}</Text>
-                  <Switch 
-                    value={sub.isActive} 
-                    onValueChange={() => handleToggle(sub._id)}
-                    trackColor={{ false: '#767577', true: theme.colors.primary }}
-                    thumbColor={sub.isActive ? '#fff' : '#f4f3f4'}
-                  />
-                </View>
-                <TouchableOpacity style={s.deleteBtn} onPress={() => handleDelete(sub._id)}>
-                  <Trash2 color={theme.colors.error} size={20} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))
+            ))}
+
+            <TouchableOpacity 
+              style={[s.modeCard, s.modeCardAdd]} 
+              onPress={handleOpenAddPattern}
+            >
+              <Plus color={theme.colors.primary} size={24} />
+              <Text style={s.modeAddText}>Create New Test Pattern</Text>
+              <Text style={s.modeAddSub}>Define custom distribution for NEET</Text>
+            </TouchableOpacity>
+          </>
         )}
       </ScrollView>
 
@@ -221,6 +368,68 @@ const AdminSubjectManage = ({ navigation }) => {
         confirmText="Yes, Delete"
         cancelText="Cancel"
       />
+
+      {/* Edit Mode Modal */}
+      <Modal visible={showModeModal} animationType="fade" transparent>
+        <View style={s.modalOverlay}>
+          <View style={[s.modalContent, { height: 'auto', paddingBottom: 40 }]}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Adjust {editingMode?.label}</Text>
+              <TouchableOpacity onPress={() => setShowModeModal(false)}>
+                <Text style={{ color: theme.colors.textMuted }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.modalBody}>
+              <Text style={s.label}>Pattern Name</Text>
+              <TextInput 
+                style={s.input} 
+                placeholder="e.g. Last NEET Mock" 
+                placeholderTextColor={theme.colors.textMuted}
+                value={editingMode?.label}
+                onChangeText={(t) => setEditingMode({ ...editingMode, label: t })}
+              />
+
+              <Text style={s.label}>Time Duration (Minutes)</Text>
+              <TextInput 
+                style={s.input} 
+                keyboardType="numeric"
+                placeholder="e.g. 180" 
+                placeholderTextColor={theme.colors.textMuted}
+                value={editingMode?.duration?.toString()}
+                onChangeText={(t) => setEditingMode({ ...editingMode, duration: parseInt(t) || 0 })}
+              />
+
+              <View style={{ marginTop: 10 }}>
+                <Text style={s.subLabel}>Section Distribution</Text>
+              </View>
+
+              {editingMode?.sections.map((sec, idx) => (
+                <View key={idx} style={{ marginBottom: 16 }}>
+                  <Text style={s.label}>{sec.name} Questions</Text>
+                  <TextInput 
+                    style={s.input} 
+                    keyboardType="numeric"
+                    value={sec.count.toString()}
+                    onChangeText={(v) => handleModeSectionChange(idx, v)}
+                  />
+                </View>
+              ))}
+
+              <View style={s.totalPreview}>
+                <Text style={s.totalLabel}>Total Questions:</Text>
+                <Text style={s.totalVal}>
+                  {editingMode?.sections.reduce((acc, s) => acc + (parseInt(s.count) || 0), 0)}
+                </Text>
+              </View>
+
+              <TouchableOpacity style={s.submitBtn} onPress={handleUpdateMode}>
+                <Text style={s.submitBtnText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -259,7 +468,35 @@ const styles = (theme) => StyleSheet.create({
   submitBtn: { backgroundColor: theme.colors.primary, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 32 },
   submitBtnText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
   editBtn: { padding: 8 },
-  fullLoadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 10 }
+  fullLoadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+  
+  tabBar: { flexDirection: 'row', paddingHorizontal: spacing.lg, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+  tab: { flex: 1, paddingVertical: 16, alignItems: 'center' },
+  activeTab: { borderBottomWidth: 2, borderBottomColor: theme.colors.primary },
+  tabText: { color: theme.colors.textMuted, fontSize: 14, fontWeight: '600' },
+  activeTabText: { color: theme.colors.primary, fontWeight: 'bold' },
+  
+  modeCard: { backgroundColor: theme.colors.surface, borderRadius: 20, padding: 18, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  modeHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+  modeTitle: { color: theme.colors.text, fontSize: 16, fontWeight: 'bold', flex: 1 },
+  totalBadge: { backgroundColor: 'rgba(99, 91, 255, 0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  totalText: { color: theme.colors.primary, fontSize: 12, fontWeight: '800' },
+  modeDistribution: { backgroundColor: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 12, gap: 8, marginBottom: 16 },
+  distItem: { flexDirection: 'row', alignItems: 'center' },
+  distName: { color: theme.colors.textMuted, fontSize: 13 },
+  distLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginHorizontal: 8, borderStyle: 'dashed' },
+  distCount: { color: theme.colors.text, fontSize: 13, fontWeight: 'bold' },
+  modeEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', paddingVertical: 8 },
+  modeEditText: { color: theme.colors.primary, fontSize: 12, fontWeight: 'bold' },
+  modeDeleteBtn: { backgroundColor: `${theme.colors.error}15`, padding: 6, borderRadius: 8 },
+  
+  totalPreview: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(99, 91, 255, 0.05)', padding: 16, borderRadius: 12, marginTop: 10, borderWidth: 1, borderColor: 'rgba(99, 91, 255, 0.1)' },
+  totalLabel: { color: theme.colors.textMuted, fontWeight: '600' },
+  totalVal: { color: theme.colors.primary, fontSize: 18, fontWeight: 'bold' },
+  
+  modeCardAdd: { borderStyle: 'dashed', borderWidth: 2, borderColor: `${theme.colors.primary}40`, alignItems: 'center', justifyContent: 'center', paddingVertical: 30, backgroundColor: 'transparent' },
+  modeAddText: { color: theme.colors.primary, fontSize: 16, fontWeight: 'bold', marginTop: 12 },
+  modeAddSub: { color: theme.colors.textMuted, fontSize: 12, marginTop: 4 }
 });
 
 export default AdminSubjectManage;

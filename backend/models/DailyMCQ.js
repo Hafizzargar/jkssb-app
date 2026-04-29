@@ -27,6 +27,9 @@ const dailyMCQSchema = new mongoose.Schema({
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
   approvedAt: Date,
   rejectionReason: String,
+  isPrizeTest: { type: Boolean, default: false },
+  entryFee: { type: Number, default: 0 },
+  prizeDistribution: [{ type: Number }], // Array where index 0 is Rank 1 prize, index 1 is Rank 2, etc.
   createdAt: { type: Date, default: Date.now }
 });
 

@@ -12,11 +12,11 @@ const IMAGE_HEIGHT = 260;
 
 const getCategoryColor = (cat) => {
   const map = {
-    JKSSB: '#6366f1', NEET: '#10b981', JEE: '#f59e0b',
-    UPSC: '#3b82f6', BANKING: '#8b5cf6', GENERAL: '#64748b',
-    'J&K': '#6366f1', INDIA: '#f97316', WORLD: '#06b6d4', OFFICIAL: '#ef4444'
+    NEET: '#10b981', AIIMS: '#3b82f6', JIPMER: '#8b5cf6',
+    BIOLOGY: '#10b981', PHYSICS: '#f59e0b', CHEMISTRY: '#ef4444',
+    GENERAL: '#64748b', JKSSB: '#6366f1'
   };
-  return map[cat] || '#6366f1';
+  return map[cat] || '#64748b';
 };
 
 const getTimeLeft = (expiry) => {
@@ -62,7 +62,7 @@ const BlogDetailScreen = ({ route, navigation }) => {
     try {
       await Share.share({
         title: blog.title,
-        message: `${blog.title}\n\n${blog.content.substring(0, 300)}...\n\nRead more on PrepMaster`,
+        message: `${blog.title}\n\n${blog.content.substring(0, 300)}...\n\nRead more on Medx Institute`,
       });
     } catch {}
   };
@@ -143,7 +143,7 @@ const BlogDetailScreen = ({ route, navigation }) => {
           <View style={s.metaRow}>
             <BookOpen color={theme.colors.textMuted} size={13} />
             <Text style={s.metaText}>
-              {blog.author || 'PrepMaster'}  ·  {formatDate(blog.createdAt)}
+              {blog.author || 'Medx Institute'}  ·  {formatDate(blog.createdAt)}
             </Text>
           </View>
 

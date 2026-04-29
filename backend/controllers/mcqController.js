@@ -20,10 +20,16 @@ exports.getTodaysMCQs = async (req, res) => {
     }
 
     if (!mcqs) {
-      const today = new Date().toISOString().split('T')[0];
+      // FIX: Use local-aware date for India (GMT+5:30) or the server's local time
+      // instead of strictly UTC which causes 404s after midnight.
+      const now = new Date();
+      const localDate = new Date(now.getTime() + (5.5 * 60 * 60 * 1000)); // Shift to IST for calculation if needed, or just use toLocaleDateString
+      const today = localDate.toISOString().split('T')[0];
+      
+      console.log(`📅 Searching for mission on: ${today}`);
       const mission = await DailyMCQ.findOne({ 
         date: today,
-        status: { $in: ['ACTIVE', 'PENDING', 'PUBLISHED'] }
+        status: { $in: ['ACTIVE', 'PUBLISHED'] }
       }).sort({ startTime: -1 });
 
       if (!mission) return res.status(404).json({ message: 'No questions scheduled' });
