@@ -104,9 +104,10 @@ exports.login = async (req, res) => {
     await user.save();
 
     console.log(`📧 [LOGIN] Sending OTP email to: ${email}`);
-    // Send Email
+    console.log(`📧 [LOGIN] Sending OTP email in background to: ${email}`);
+    // Send Email (Don't await, so the user goes to the next screen immediately)
     const { sendOTPEmail } = require('../services/emailService');
-    await sendOTPEmail(email, otp);
+    sendOTPEmail(email, otp);
 
     console.log(`🚀 [LOGIN] Success! Response sent to client.`);
     res.json({
