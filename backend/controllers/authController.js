@@ -69,26 +69,31 @@ exports.register = async (req, res) => {
  */
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    console.log(`🔍 [LOGIN] Checking user: ${email}`);
     const user = await User.findOne({ email });
     
     if (!user) {
+      console.log(`❌ [LOGIN] User not found: ${email}`);
       return res.status(404).json({ message: 'User not found. Please register first.' });
     }
 
     // Compare Password
+    console.log(`🔑 [LOGIN] Comparing password for: ${email}`);
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      console.log(`❌ [LOGIN] Password mismatch for: ${email}`);
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     // Check if user is DISABLED
     if (user.status === 'DISABLED') {
+      console.log(`❌ [LOGIN] User is disabled: ${email}`);
       return res.status(403).json({ 
         message: 'Your account is disabled. Please contact the team for assistance.' 
       });
     }
 
+    console.log(`✅ [LOGIN] Password correct. Generating OTP...`);
     // 2FA: Generate OTP instead of logging in immediately
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 30 * 1000); // 30 seconds
@@ -97,10 +102,12 @@ exports.login = async (req, res) => {
     user.otpExpiry = otpExpiry;
     await user.save();
 
+    console.log(`📧 [LOGIN] Sending OTP email to: ${email}`);
     // Send Email
     const { sendOTPEmail } = require('../services/emailService');
     await sendOTPEmail(email, otp);
 
+    console.log(`🚀 [LOGIN] Success! Response sent to client.`);
     res.json({
       success: true,
       twoFactorRequired: true,
