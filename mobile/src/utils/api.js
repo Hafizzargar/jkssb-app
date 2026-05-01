@@ -8,14 +8,25 @@ import { toast } from '../components/Toast';
  * This client automatically resolves the backend address based on your environment.
  */
 
-// 🚀 PRODUCTION BACKEND URL (Change this once deployed on Render)
+// 🚀 BACKEND CONFIGURATION
 const PRODUCTION_URL = 'https://jkssb-app.onrender.com/api';
 
-const getBaseUrl = () => {
-  // 1. Check for manually set override in env (if you have one)
-  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
+/**
+ * 🏠 LOCAL DEVELOPMENT TIPS:
+ * - Android Emulator: Use 'http://10.0.2.2:5000/api'
+ * - iOS Simulator: Use 'http://localhost:5000/api'
+ * - Physical Device: Use your PC's IP (e.g., 'http://192.168.1.XX:5000/api')
+ */
+const LOCAL_URL = 'http://10.41.155.92:5000/api'; // PC's Wi-Fi IP for Physical Device
 
-  // 2. Use Production URL if you are building a release version (APK)
+const getBaseUrl = () => {
+  // If we are in development mode, use the local server
+  if (__DEV__) {
+    console.log('🛠️ [API] Development mode: Using local server');
+    return LOCAL_URL;
+  }
+  
+  // Use Production URL if you are building a release version (APK)
   return PRODUCTION_URL;
 };
 

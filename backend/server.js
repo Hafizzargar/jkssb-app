@@ -1,3 +1,6 @@
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first'); // Fixes ENETUNREACH IPv6 issues on local and Render
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');

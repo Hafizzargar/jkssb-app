@@ -1,6 +1,14 @@
 const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 require('dotenv').config();
 
+// Initialize SendGrid if key exists (For Production)
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  console.log('📧 SendGrid initialized for Production Emails');
+}
+
+// Nodemailer Fallback (For local dev)
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
@@ -14,6 +22,33 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS,
   },
 });
+
+/**
+ * Universal Send Email Function
+ * Uses SendGrid if API key is present, otherwise falls back to Nodemailer
+ */
+const sendMailUniversal = async (mailOptions) => {
+  try {
+    if (process.env.SENDGRID_API_KEY) {
+      // SendGrid format requires 'from' to be verified in SendGrid
+      const msg = {
+        to: mailOptions.to,
+        from: mailOptions.from, 
+        subject: mailOptions.subject,
+        html: mailOptions.html,
+      };
+      await sgMail.send(msg);
+      return true;
+    } else {
+      // Nodemailer format
+      await transporter.sendMail(mailOptions);
+      return true;
+    }
+  } catch (error) {
+    console.error('❌ Email Sending Error:', error.response ? error.response.body : error);
+    return false;
+  }
+};
 
 /**
  * Send email to prize winners
@@ -43,12 +78,8 @@ const sendPrizeWonEmail = async (email, name, rank, amount, type) => {
     `,
   };
 
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log(`✅ Prize email sent to ${email}`);
-  } catch (error) {
-    console.error('❌ Email Service Error:', error);
-  }
+  const success = await sendMailUniversal(mailOptions);
+  if (success) console.log(`✅ Prize email sent to ${email}`);
 };
 
 /**
@@ -56,7 +87,7 @@ const sendPrizeWonEmail = async (email, name, rank, amount, type) => {
  */
 const sendOTPEmail = async (email, otp) => {
   const mailOptions = {
-    from: `"Medx Prep 🔐" <${process.env.EMAIL_USER}>`,
+    from: `"JKSSB PrepMaster 🔐" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: `${otp} is your verification code`,
     html: `
@@ -69,11 +100,7 @@ const sendOTPEmail = async (email, otp) => {
     `,
   };
 
-  try {
-    await transporter.sendMail(mailOptions);
-  } catch (error) {
-    console.error('❌ OTP Email Error:', error);
-  }
+  await sendMailUniversal(mailOptions);
 };
 
 /**
@@ -99,12 +126,8 @@ const sendApprovalEmail = async (email, name) => {
     `,
   };
 
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log(`✅ Approval email sent to ${email}`);
-  } catch (error) {
-    console.error('❌ Approval Email Error:', error);
-  }
+  const success = await sendMailUniversal(mailOptions);
+  if (success) console.log(`✅ Approval email sent to ${email}`);
 };
 
 module.exports = { sendPrizeWonEmail, sendOTPEmail, sendApprovalEmail };
